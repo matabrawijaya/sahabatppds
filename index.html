@@ -258,6 +258,21 @@
   <div class="dialog-isi" id="daftar-iklan-isi"></div>
 </dialog>
 
+<dialog id="dlg-bagikan" class="dialog kecil" aria-labelledby="bagikan-judul">
+  <div class="dialog-isi">
+    <h2 class="dialog-judul" id="bagikan-judul">Bagikan</h2>
+    <p class="bagikan-nama" id="bagikan-nama"></p>
+    <label class="label" for="bagikan-tautan">Link</label>
+    <input class="isian bagikan-tautan" id="bagikan-tautan" readonly>
+    <p class="bantu bagikan-bantu">Penerima tetap perlu masuk portal, dan hanya bisa membuka bila punya akses ke aplikasinya.</p>
+  </div>
+  <div class="dialog-aksi bertumpuk">
+    <button type="button" class="tombol utama" id="bagikan-ya">Bagikan</button>
+    <button type="button" class="tombol" id="bagikan-salin">Salin link</button>
+    <button type="button" class="tombol polos" id="bagikan-tutup">Tutup</button>
+  </div>
+</dialog>
+
 <dialog id="dlg-semua" class="dialog" aria-labelledby="semua-judul">
   <div class="dialog-kepala">
     <h2 class="dialog-judul" id="semua-judul">Pengumuman aktif</h2>

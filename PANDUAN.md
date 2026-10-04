@@ -1,6 +1,6 @@
 # Portal Sahabat PPDS — Panduan singkat
 
-Portal ini mengikuti **KONTRAK_INTEGRASI.md versi 1.2** (bagian 5–8). Semua data (aplikasi, peran, pengumuman) diambil dari Hub, jadi file di sini jarang perlu diubah.
+Portal ini mengikuti **KONTRAK_INTEGRASI.md versi 1.4** (bagian 5–9). Semua data (aplikasi, peran, pengumuman) diambil dari Hub, jadi file di sini jarang perlu diubah.
 
 ## File
 | File | Isi |
@@ -22,7 +22,10 @@ Repo ini publik. **Jangan menaruh kunci, PIN, atau rahasia apa pun di file mana 
 - **Masuk:** nomor HP → PIN bila diminta → PIN baru bila PIN masih sementara. Hanya sesi yang disimpan di perangkat, PIN tidak pernah disimpan.
 - **Membuka aplikasi:** setiap kali buka memakai tiket baru. Aplikasi yang sudah terbuka tidak dimuat ulang saat pindah aplikasi.
 - **Hub Kontak:** selalu dibuka di tab baru, tanpa tiket. Pengguna login lagi di Hub.
-- **Salin link:** menghasilkan link portal (`…/?app=<id>`), tanpa tiket.
+- **Tautan dalam:** link `…/?buka=<id>&<parameter>` membuka aplikasi itu langsung, setelah login bila perlu. Link lama `?app=<id>` tetap jalan.
+- **Salin link:** menyalin link ke halaman yang sedang dibuka di aplikasi (bila aplikasinya mengirim pesan "lokasi"), tanpa tiket.
+- **Bagikan dari aplikasi:** aplikasi mengirim pesan "bagikan", portal menampilkan dialog dengan tombol Bagikan (menu bagikan HP) dan Salin link.
+- **Alamat portal untuk link** diambil otomatis dari alamat halaman. Bila memakai domain sendiri dan ingin link selalu memakai domain itu, tambahkan di `config.js`: `ALAMAT_PORTAL: 'https://domain-anda/'`.
 - **Aplikasi yang belum mengizinkan tampil di dalam portal:** setelah ±15 detik (atau lebih cepat bila terdeteksi), muncul tombol "Buka di tab baru".
 - **Pengumuman:** muncul sebagai pop-up saat portal dibuka. Yang sudah ditutup tidak muncul lagi di perangkat itu. Semua pengumuman aktif bisa dibaca ulang lewat tombol pengumuman.
 - **Data dari Hub** dimuat ulang saat portal dibuka kembali dan tiap ±15 menit.

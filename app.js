@@ -17,7 +17,7 @@
     iklanPopup: 'portal.iklanPopup'      // { idSlot: waktu (ms) pop-up iklan terakhir tampil }
   };
   const ID_HUB = 'hub';
-  const VERSI_KODE = '2.2.0';
+  const VERSI_KODE = '2.3.0';
 
   /* ===================== Utilitas ===================== */
   const $ = (s) => document.querySelector(s);
@@ -120,6 +120,82 @@
     window.addEventListener('resize', () => diagnosa('ukuran: ' + innerWidth + '×' + innerHeight));
   }
 
+  /* ===================== Tautan dalam (bagian 9) — fungsi baku dari kontrak ===================== */
+  var PARAM_TERLARANG_HUB = ['tiket', 'api', 'buka', 'key', 'segel'];
+
+  /** Parameter aplikasi yang sah. sumber: objek {nama: nilai} (mis. e.parameter) atau URLSearchParams. */
+  function saringParamHub(sumber) {
+    var pasangan = [];
+    if (sumber && typeof sumber.get === 'function' && typeof sumber.forEach === 'function') {
+      sumber.forEach(function (v, k) { pasangan.push([k, v]); });
+    } else if (sumber && typeof sumber === 'object') {
+      Object.keys(sumber).forEach(function (k) { pasangan.push([k, sumber[k]]); });
+    }
+    var hasil = {}, panjang = 0, n = 0;
+    for (var i = 0; i < pasangan.length && n < 10; i++) {
+      var nama = pasangan[i][0], nilai = pasangan[i][1], bagian;
+      if (!/^[a-z][a-z0-9_]{0,19}$/.test(nama) || PARAM_TERLARANG_HUB.indexOf(nama) >= 0) continue;
+      if (Object.prototype.hasOwnProperty.call(hasil, nama)) continue;
+      if (typeof nilai !== 'string' || nilai.length > 200 || /[\u0000-\u001f\u007f]/.test(nilai)) continue;
+      try { bagian = encodeURIComponent(nama).length + encodeURIComponent(nilai).length + 2; } catch (e) { continue; }
+      if (panjang + bagian > 1000) continue;
+      hasil[nama] = nilai; panjang += bagian; n++;
+    }
+    return hasil;
+  }
+
+  /** {nama: nilai} → "nama=nilai&…" (encodeURIComponent, spasi = %20). */
+  function kueriHub(param) {
+    return Object.keys(param).map(function (k) {
+      return encodeURIComponent(k) + '=' + encodeURIComponent(param[k]);
+    }).join('&');
+  }
+
+  /** URL bingkai aplikasi: parameter aplikasi + tiket (paling akhir). Hanya untuk iframe, bukan untuk dibagikan. */
+  function urlBingkaiHub(app, param, tiket) {
+    var bagian = [kueriHub(saringParamHub(param)), tiket ? 'tiket=' + encodeURIComponent(tiket) : '']
+      .filter(Boolean).join('&');
+    return app.url + (bagian ? (app.url.indexOf('?') >= 0 ? '&' : '?') + bagian : '');
+  }
+
+  /** Tautan untuk dibagikan. Tidak pernah memuat tiket. */
+  function tautanPortalHub(alamatPortal, idApp, param) {
+    var q = kueriHub(saringParamHub(param));
+    return alamatPortal + '?buka=' + encodeURIComponent(idApp) + (q ? '&' + q : '');
+  }
+
+  /** Pengirim berasal dari bingkai aplikasi (atau bingkai di dalamnya)? */
+  function dariBingkaiHub(sumber, bingkai) {
+    try {
+      for (var w = sumber, i = 0; w && i < 4; i++) {
+        if (w === bingkai.contentWindow) return true;
+        if (w === w.parent) break;
+        w = w.parent;
+      }
+    } catch (e) {}
+    return false;
+  }
+  function asalBolehHub(asal, urlApp) {
+    return asal === new URL(urlApp).origin || /^https:\/\/[a-z0-9-]+-script\.googleusercontent\.com$/.test(asal);
+  }
+
+  // Alamat halaman utama portal (dengan "/" di akhir). Bisa diatur di config.js (ALAMAT_PORTAL);
+  // bila kosong, diambil dari alamat halaman ini.
+  const ALAMAT_PORTAL = (() => {
+    const a = String(K.ALAMAT_PORTAL || '').trim();
+    if (/^https?:\/\//i.test(a)) return a.endsWith('/') ? a : a + '/';
+    return location.origin + location.pathname.replace(/[^/]*$/, '');
+  })();
+  const tautanApp = (id) => tautanPortalHub(ALAMAT_PORTAL, id, S.lokasi[id] || {});
+  // Ganti alamat di bilah browser. Bila alamat portal di config berbeda asal, pakai bentuk relatif.
+  function setelAlamat(url, st, dorong) {
+    let u = url;
+    try { if (new URL(url).origin !== location.origin) u = url.slice(url.indexOf('?')); } catch (e) { u = url.slice(url.indexOf('?')); }
+    try {
+      if (dorong) history.pushState(st, '', u); else history.replaceState(st, '', u);
+    } catch (e) { /* abaikan */ }
+  }
+
   /* ===================== Komunikasi dengan Hub (kontrak 5.2) ===================== */
   async function hub(aksi, data) {
     if (!K.HUB_URL || /GANTI_/.test(K.HUB_URL)) {
@@ -157,6 +233,7 @@
     sedangMuat: null,
     tautanAwal: null,
     lanjut: null,       // halaman yang dituju setelah login (mis. pasang-iklan.html)
+    lokasi: {},         // { idAplikasi: {param} } lokasi terakhir tiap aplikasi (bagian 9.4)
     lencana: {},        // { idAplikasi: angka } (bagian 7)
     iklan: { halamanPesan: '', slot: [], iklan: [] },   // bagian 8.3, tempat = portal
     bannerDitutup: new Set(),
@@ -302,7 +379,7 @@
     Object.assign(S, {
       sesi: null, sesiBerakhir: 0, pengguna: null, aplikasi: [], pengumuman: [],
       tiket: {}, tiketBerakhir: 0, aktif: null, bingkai: {}, hidup: [], terakhirMuat: 0,
-      lencana: {}, iklan: { halamanPesan: '', slot: [], iklan: [] }
+      lencana: {}, iklan: { halamanPesan: '', slot: [], iklan: [] }, lokasi: {}
     });
     S.bannerDitutup.clear();
     $('#iklan-banner').replaceChildren();
@@ -492,20 +569,12 @@
     return { ok: false, kode: r.kode, pesan: r.pesan || 'Akses ke aplikasi belum bisa disiapkan.' };
   }
 
-  function tambahParam(url, qs) {
-    if (!qs) return url;
-    const [dasar, ...h] = String(url).split('#');
-    const hash = h.length ? '#' + h.join('#') : '';
-    return dasar + (dasar.includes('?') ? '&' : '?') + qs + hash;
-  }
-
   // Alamat untuk SATU kali buka. Tiap panggilan memakai tiket baru.
-  async function alamatSekali(app, extra) {
-    const url = tambahParam(app.url, extra || '');
-    if (!app.pakaiTiket) return { ok: true, url };
+  async function alamatSekali(app, param) {
+    if (!app.pakaiTiket) return { ok: true, url: urlBingkaiHub(app, param || {}, '') };
     const t = await ambilTiket(app.id);
     if (!t.ok) return t;
-    return { ok: true, url: tambahParam(url, 'tiket=' + encodeURIComponent(t.tiket)) };
+    return { ok: true, url: urlBingkaiHub(app, param || {}, t.tiket) };
   }
 
   /* ===================== Membuka aplikasi ===================== */
@@ -515,11 +584,11 @@
     if (!app) { toast('Aplikasi itu tidak tersedia untuk akun Anda.'); return; }
 
     if (diTabBaru(app)) {
-      if (opsi.otomatis) { toast(app.nama + ' selalu dibuka di tab baru. Ketuk ikonnya di beranda.'); return; }
-      bukaTautanLuar(app.url);   // tanpa tiket
+      bukaHubTabBaru(app, opsi.otomatis);   // tanpa tiket, tanpa parameter
       return;
     }
 
+    if (opsi.param) S.lokasi[id] = saringParamHub(opsi.param);
     S.aktif = id;
     $('#app-judul').textContent = app.nama;
     document.title = app.nama + ' – ' + K.NAMA;
@@ -533,37 +602,41 @@
 
     if (!opsi.tanpaRiwayat) {
       // Pindah antar-aplikasi mengganti entri riwayat, supaya "kembali" selalu ke beranda.
-      const st = { app: id }, alamat = '#' + encodeURIComponent(id);
-      if (history.state && history.state.app) history.replaceState(st, '', alamat);
-      else history.pushState(st, '', alamat);
+      setelAlamat(tautanApp(id), { app: id }, !(history.state && history.state.app));
     }
 
     let b = S.bingkai[id];
     catatHidup(id);
     if (b) { tampilkanBingkai(b); segarkanPemuat(); ukurUlangBingkai(); return; }   // sudah terbuka: tampilkan saja, tanpa memuat ulang
 
+    b = { id, f: null, status: 'tiket', pesan: '', timer: null, cek: null };
+    b.f = buatIframe(app, b);
+    S.bingkai[id] = b;
+    $('#wadah').append(b.f);
+    tampilkanBingkai(b);
+    ukurUlangBingkai();
+    muatBingkai(b);
+  }
+
+  function buatIframe(app, b) {
     const f = el('iframe', {
       title: app.nama,
       allow: 'clipboard-read; clipboard-write; fullscreen; autoplay; encrypted-media; picture-in-picture; geolocation',
       allowfullscreen: true
     });
-    b = { id, f, status: 'tiket', pesan: '', timer: null, cek: null };
-    f.addEventListener('load', () => saatTermuat(b));
-    S.bingkai[id] = b;
-    $('#wadah').append(f);
-    tampilkanBingkai(b);
-    ukurUlangBingkai();
-    muatBingkai(b, opsi.extra);
+    f.addEventListener('load', () => { if (b.f === f) saatTermuat(b); });
+    return f;
   }
 
-  async function muatBingkai(b, extra) {
+  // Setiap kali memuat (pertama kali, muat ulang, setelah dilepas dari memori): tiket baru + lokasi terakhir.
+  async function muatBingkai(b) {
     const app = cariApp(b.id);
     if (!app) return;
     clearTimeout(b.timer); clearTimeout(b.cek);
     b.status = 'tiket'; b.pesan = '';
     b.iklanLoading = undefined;   // dipilih ulang secara acak setiap kali memuat
     segarkanPemuat();
-    const r = await alamatSekali(app, extra);
+    const r = await alamatSekali(app, S.lokasi[b.id]);
     if (S.bingkai[b.id] !== b) return;               // sudah ditutup/keluar
     if (!r.ok) {
       if (r.kode === 'SESI_HABIS') return;
@@ -574,6 +647,14 @@
     b.timer = setTimeout(() => {
       if (b.status === 'muat') { b.status = 'lambat'; segarkanPemuat(); }
     }, (Number(K.BATAS_TAMPIL_DETIK) || 15) * 1000);
+    if (b.f.getAttribute('src')) {
+      // Muat ulang dengan bingkai baru: mengganti src bingkai lama menambah riwayat di browser,
+      // sehingga tombol kembali bisa "mundur" di dalam aplikasi, bukan ke beranda.
+      const baru = buatIframe(app, b);
+      b.f.replaceWith(baru);
+      b.f = baru;
+      tampilkanBingkai(S.aktif ? S.bingkai[S.aktif] : null);
+    }
     b.f.src = r.url;
   }
 
@@ -646,6 +727,15 @@
     a.remove();
   }
 
+  function bukaHubTabBaru(app, otomatis) {
+    if (!otomatis) { bukaTautanLuar(app.url); return; }
+    // Dibuka dari link (bukan ketukan): browser bisa memblokir tab baru.
+    const w = window.open('', '_blank');
+    if (!w) { toast(app.nama + ' dibuka di tab baru. Ketuk ikonnya di beranda.'); return; }
+    try { w.opener = null; } catch (e) { /* abaikan */ }
+    w.location.replace(app.url);
+  }
+
   async function bukaTabBaru(id) {
     const app = cariApp(id);
     if (!app) return;
@@ -654,7 +744,7 @@
     const w = window.open('', '_blank');
     if (!w) { toast('Browser memblokir tab baru. Izinkan pop-up untuk portal ini.'); return; }
     try { w.opener = null; w.document.title = app.nama; w.document.body.textContent = 'Membuka ' + app.nama + '…'; } catch (e) { /* abaikan */ }
-    const r = await alamatSekali(app);
+    const r = await alamatSekali(app, S.lokasi[id]);
     if (!r.ok) { w.close(); if (r.pesan) toast(r.pesan); return; }
     w.location.replace(r.url);
   }
@@ -664,8 +754,7 @@
     if (b) muatBingkai(b);   // selalu tiket baru
   }
 
-  async function salinLink(id) {
-    const tautan = location.origin + location.pathname + '?app=' + encodeURIComponent(id);   // tanpa tiket
+  async function salin(tautan) {
     let ok = false;
     try { await navigator.clipboard.writeText(tautan); ok = true; } catch (e) {
       const t = el('textarea', { readonly: true, style: 'position:fixed;opacity:0' });
@@ -673,7 +762,12 @@
       try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
       t.remove();
     }
-    toast(ok ? 'Link disalin.' : 'Link: ' + tautan);
+    return ok;
+  }
+  // Tombol "Salin link": tautan dalam ke lokasi terakhir aplikasi yang sedang dibuka (tanpa tiket).
+  async function salinLink(id) {
+    const tautan = tautanApp(id);
+    toast(await salin(tautan) ? 'Link disalin.' : 'Link: ' + tautan);
   }
 
   function tampilBeranda(opsi) {
@@ -818,6 +912,8 @@
     const r = sesi ? await hub('keluar', pilih === 'semua' ? { sesi, semua: true } : { sesi }) : { ok: true };
     $$('[data-keluar]').forEach((x) => { x.disabled = false; });
     bersihkanLokal();
+    S.tautanAwal = null;
+    try { sessionStorage.removeItem('portal.tujuan'); } catch (e) { /* abaikan */ }
     tampilLogin();
     if (!r.ok && r.kode !== 'SESI_HABIS') toast(r.pesan);
     else if (pilih === 'semua') toast('Anda sudah keluar dari semua perangkat.');
@@ -881,30 +977,91 @@
     else tampilBeranda();
   });
 
-  // Tautan langsung: ?app=<id>[&param lain] atau #<id>
+  // Tautan dalam (bagian 9.3): ?buka=<id>&<parameter aplikasi>.
+  // Juga menerima bentuk lama ?app=<id> dan #<id>. Tujuan disimpan di sessionStorage sampai berhasil masuk.
+  const KUNCI_TUJUAN = 'portal.tujuan';
   function bacaTautanAwal() {
     const q = new URLSearchParams(location.search);
-    let id = q.get('app');
     if (q.get('lanjut') === 'pasang') {   // hanya halaman milik portal sendiri
       const slot = q.get('slot');
       S.lanjut = 'pasang-iklan.html' + (slot ? '?slot=' + encodeURIComponent(slot) : '');
+      q.delete('lanjut');
+      q.delete('slot');
     }
-    q.delete('lanjut');
-    q.delete('slot');
-    q.delete('app');
-    q.delete('tiket');
     q.delete('diagnosa');
+    let id = q.get('buka');
+    if (!id && q.get('app')) { id = q.get('app'); q.delete('app'); }   // bentuk lama
     if (!id && location.hash.length > 1) { try { id = decodeURIComponent(location.hash.slice(1)); } catch (e) { id = null; } }
-    if (id) S.tautanAwal = { id, extra: q.toString() };
+    if (id) {
+      S.tautanAwal = { id, param: saringParamHub(q) };
+      try { sessionStorage.setItem(KUNCI_TUJUAN, JSON.stringify(S.tautanAwal)); } catch (e) { /* abaikan */ }
+    } else {
+      try { const t = JSON.parse(sessionStorage.getItem(KUNCI_TUJUAN) || 'null'); if (t && t.id) S.tautanAwal = t; } catch (e) { /* abaikan */ }
+    }
     if (location.search || location.hash) history.replaceState(null, '', location.pathname);
   }
   function bukaTautanAwal() {
     const t = S.tautanAwal;
     S.tautanAwal = null;
-    if (!t) return;
-    if (!cariApp(t.id)) { toast('Aplikasi pada link itu tidak tersedia untuk akun Anda.'); return; }
-    bukaApp(t.id, { extra: t.extra, otomatis: true });
+    try { sessionStorage.removeItem(KUNCI_TUJUAN); } catch (e) { /* abaikan */ }
+    if (!t || !t.id) return;
+    const app = cariApp(t.id);
+    if (!app) { tampilBeranda(); toast('Aplikasi itu tidak tersedia untuk akun Anda.'); return; }
+    bukaApp(t.id, { param: diTabBaru(app) ? null : (t.param || {}), otomatis: true });
   }
+
+  /* ===================== Pesan dari aplikasi (bagian 9.4) ===================== */
+  // Bingkai yang sedang tampil, atau null bila sedang di beranda.
+  function ambilTampil() {
+    if (!S.aktif || !$('#layar-portal').classList.contains('mode-app')) return null;
+    const b = S.bingkai[S.aktif];
+    const app = cariApp(S.aktif);
+    return b && app ? { app, bingkai: b.f } : null;
+  }
+  window.addEventListener('message', (ev) => {
+    const t = ambilTampil();
+    if (!t || !dariBingkaiHub(ev.source, t.bingkai)) return;
+    try { if (!asalBolehHub(ev.origin, t.app.url)) return; } catch (e) { return; }
+    const d = ev.data;
+    if (!d || typeof d !== 'object' || d.hk !== 1) return;
+    if (d.pesan === 'lokasi') {
+      S.lokasi[t.app.id] = saringParamHub(d.param);
+      setelAlamat(tautanApp(t.app.id), history.state, false);
+      diagnosa('lokasi ' + t.app.id + ': ' + kueriHub(S.lokasi[t.app.id]));
+    } else if (d.pesan === 'bagikan') {
+      if ($('#dlg-bagikan').open) return;
+      const judul = typeof d.judul === 'string' && d.judul.trim() ? d.judul.trim().slice(0, 100) : t.app.nama;
+      bukaDialogBagikan(judul, tautanPortalHub(ALAMAT_PORTAL, t.app.id, saringParamHub(d.param)));
+    }
+  });
+
+  // Dialog bagikan milik portal. Tidak pernah membagikan tanpa ketukan pengguna di dialog ini.
+  let tautanBagikan = '';
+  let judulBagikan = '';
+  function bukaDialogBagikan(judul, tautan) {
+    judulBagikan = judul;
+    tautanBagikan = tautan;
+    $('#bagikan-nama').textContent = judul;
+    $('#bagikan-tautan').value = tautan;
+    $('#bagikan-ya').hidden = typeof navigator.share !== 'function';
+    $('#dlg-bagikan').showModal();
+    ($('#bagikan-ya').hidden ? $('#bagikan-salin') : $('#bagikan-ya')).focus();
+  }
+  $('#bagikan-ya').addEventListener('click', async () => {
+    try {
+      await navigator.share({ title: judulBagikan, url: tautanBagikan });
+      $('#dlg-bagikan').close();
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;   // pengguna membatalkan
+      toast(await salin(tautanBagikan) ? 'Menu bagikan tidak tersedia. Link disalin.' : 'Link: ' + tautanBagikan);
+    }
+  });
+  $('#bagikan-salin').addEventListener('click', async () => {
+    toast(await salin(tautanBagikan) ? 'Link disalin.' : 'Link: ' + tautanBagikan);
+    $('#dlg-bagikan').close();
+  });
+  $('#bagikan-tutup').addEventListener('click', () => $('#dlg-bagikan').close());
+  $('#bagikan-tautan').addEventListener('focus', (e) => e.target.select());
 
   /* ===================== Lencana (bagian 7) ===================== */
   let terakhirLencana = 0;

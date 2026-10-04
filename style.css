@@ -596,3 +596,9 @@ svg { flex-shrink: 0; }
 
 /* Isi daftar iklan tidak boleh menyusut */
 .dialog-iklan .dialog-isi > * { flex-shrink: 0; }
+
+/* ===================== Dialog bagikan (bagian 9.4) ===================== */
+.bagikan-nama { margin: 6px 0 16px; line-height: 1.45; font-weight: 600; overflow-wrap: anywhere; }
+#dlg-bagikan .label { display: block; margin-bottom: 6px; }
+.bagikan-tautan { width: 100%; font-size: 14px; color: var(--redup); }
+.bagikan-bantu { margin: 10px 0 0; line-height: 1.45; }
