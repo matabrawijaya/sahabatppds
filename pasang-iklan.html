@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pasang iklan</title>
+<meta name="theme-color" content="#12304A">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="favicon-48.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="config.js"></script>
+<script src="iklan.js" defer></script>
+<script src="pasang-iklan.js" defer></script>
+</head>
+<body class="hal-pasang">
+
+<header class="pi-kepala">
+  <a class="tombol-ikon" href="./" aria-label="Kembali ke portal">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </a>
+  <h1 class="pi-judul">Pasang iklan</h1>
+</header>
+
+<main class="pi-isi">
+  <div class="pi-memuat" id="pi-memuat">
+    <div class="putar" aria-hidden="true"></div>
+    <p id="pi-memuat-teks" role="status">Memuat tempat iklan…</p>
+    <button type="button" class="tombol" id="pi-coba" hidden>Coba lagi</button>
+  </div>
+
+  <section class="pi-kartu" id="pi-masuk" hidden>
+    <h2>Masuk dulu</h2>
+    <p id="pi-masuk-pesan">Pemesanan iklan memakai akun portal. Pengiklan dari luar daftar dapat memesan lewat anggota yang terdaftar.</p>
+    <a class="tombol utama" id="pi-tautan-masuk" href="./?lanjut=pasang">Masuk lewat portal</a>
+  </section>
+
+  <section id="pi-utama" hidden>
+    <div class="pi-tab" role="tablist" aria-label="Pasang iklan">
+      <button type="button" role="tab" id="tab-pesan" aria-selected="true" aria-controls="panel-pesan">Pesan iklan</button>
+      <button type="button" role="tab" id="tab-saya" aria-selected="false" aria-controls="panel-saya">Pesanan saya</button>
+    </div>
+
+    <div id="panel-pesan" role="tabpanel" aria-labelledby="tab-pesan">
+      <form id="pi-form" novalidate>
+        <fieldset class="pi-langkah">
+          <legend>1. Pilih tempat iklan</legend>
+          <div class="pi-slot" id="pi-slot"></div>
+          <p class="pi-galat-isian" id="g-slot" hidden></p>
+        </fieldset>
+
+        <fieldset class="pi-langkah">
+          <legend>2. Isi materi iklan</legend>
+
+          <label class="label" for="f-pengiklan">Nama usaha</label>
+          <input class="isian" id="f-pengiklan" maxlength="40" autocomplete="organization" aria-describedby="h-pengiklan g-pengiklan">
+          <p class="pi-hitung" id="h-pengiklan">0/40</p>
+          <p class="pi-galat-isian" id="g-pengiklan" hidden></p>
+
+          <label class="label" for="f-judul">Judul iklan</label>
+          <input class="isian" id="f-judul" maxlength="60" aria-describedby="h-judul g-judul">
+          <p class="pi-hitung" id="h-judul">0/60</p>
+          <p class="pi-galat-isian" id="g-judul" hidden></p>
+
+          <label class="label" for="f-teks">Keterangan <span class="pi-opsional">(boleh kosong)</span></label>
+          <textarea class="isian pi-area" id="f-teks" maxlength="300" rows="3" aria-describedby="h-teks g-teks"></textarea>
+          <p class="pi-hitung" id="h-teks">0/300</p>
+          <p class="pi-galat-isian" id="g-teks" hidden></p>
+
+          <label class="label" for="f-tautan">Tautan <span class="pi-opsional">(boleh kosong)</span></label>
+          <input class="isian" id="f-tautan" type="url" inputmode="url" maxlength="300" placeholder="https://wa.me/62812…" aria-describedby="b-tautan g-tautan">
+          <p class="bantu" id="b-tautan">Harus diawali https://, misalnya link WhatsApp, Instagram, atau toko online.</p>
+          <p class="pi-galat-isian" id="g-tautan" hidden></p>
+
+          <label class="label" for="f-gambar">Gambar <span class="pi-opsional" id="o-gambar"></span></label>
+          <input class="pi-berkas" id="f-gambar" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="b-gambar g-gambar">
+          <p class="bantu" id="b-gambar">JPG, PNG, atau WebP. Gambar besar otomatis diperkecil.</p>
+          <div class="pi-gambar-info" id="pi-gambar-info" hidden>
+            <span id="pi-gambar-ket"></span>
+            <button type="button" class="tautan" id="pi-hapus-gambar">Hapus gambar</button>
+          </div>
+          <p class="pi-galat-isian" id="g-gambar" hidden></p>
+        </fieldset>
+
+        <section class="pi-langkah">
+          <h2 class="pi-legenda">3. Pratinjau</h2>
+          <p class="bantu" id="pi-pratinjau-ket">Pilih tempat iklan untuk melihat pratinjau.</p>
+          <div class="pi-pratinjau" id="pi-pratinjau"></div>
+        </section>
+
+        <fieldset class="pi-langkah">
+          <legend>4. Jadwal tayang</legend>
+          <div class="pi-dua">
+            <div>
+              <label class="label" for="f-mulai">Mulai tayang</label>
+              <input class="isian" id="f-mulai" type="date" aria-describedby="g-mulai">
+            </div>
+            <div>
+              <label class="label" for="f-hari">Lama (hari)</label>
+              <input class="isian" id="f-hari" type="number" inputmode="numeric" min="1" max="90" step="1" value="7" aria-describedby="g-hari">
+            </div>
+          </div>
+          <p class="bantu" id="pi-rentang"></p>
+          <p class="pi-galat-isian" id="g-mulai" hidden></p>
+          <p class="pi-galat-isian" id="g-hari" hidden></p>
+        </fieldset>
+
+        <div class="pi-estimasi">
+          <span>Estimasi harga</span>
+          <strong id="pi-harga">–</strong>
+          <span class="bantu" id="pi-harga-ket">Harga final ditentukan admin iklan.</span>
+        </div>
+
+        <div class="pesan galat" id="pi-galat" role="alert" hidden></div>
+        <button type="submit" class="tombol utama lebar" id="pi-kirim">Kirim pesanan</button>
+      </form>
+
+      <section class="pi-kartu" id="pi-selesai" hidden>
+        <h2>Pesanan terkirim</h2>
+        <p>Pesanan Anda menunggu persetujuan admin iklan. Iklan tayang otomatis setelah disetujui.</p>
+        <div id="pi-selesai-pesanan"></div>
+        <h3>Cara pembayaran</h3>
+        <div class="pi-ketentuan" id="pi-ketentuan-selesai"></div>
+        <div class="pi-aksi">
+          <button type="button" class="tombol utama" id="pi-lihat-saya">Lihat pesanan saya</button>
+          <button type="button" class="tombol" id="pi-pesan-lagi">Pesan iklan lain</button>
+        </div>
+      </section>
+    </div>
+
+    <div id="panel-saya" role="tabpanel" aria-labelledby="tab-saya" hidden>
+      <div id="pi-daftar-saya"></div>
+      <details class="pi-kartu pi-ketentuan-saya" id="pi-ketentuan-saya-wadah" hidden>
+        <summary>Cara pembayaran</summary>
+        <div class="pi-ketentuan" id="pi-ketentuan-saya"></div>
+      </details>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast" role="status" hidden></div>
+</body>
+</html>

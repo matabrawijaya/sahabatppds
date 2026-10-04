@@ -12,11 +12,12 @@
     sesi: 'portal.sesi',                 // { sesi, sesiBerakhir } — PIN tidak pernah disimpan
     paket: 'portal.paket',               // salinan tampilan terakhir (tanpa tiket, tanpa sesi)
     ditutup: 'portal.pengumumanDitutup', // id pengumuman yang sudah ditutup
-    instalHari: 'portal.instalHari',     // tanggal terakhir ajakan instal tampil (sekali sehari)
-    terinstal: 'portal.terinstal'        // tanda portal pernah diinstal dari browser ini
+    instalTerakhir: 'portal.instalTerakhir', // waktu (ms) ajakan instal terakhir tampil
+    terinstal: 'portal.terinstal',       // tanda portal pernah diinstal dari browser ini
+    iklanPopup: 'portal.iklanPopup'      // { idSlot: waktu (ms) pop-up iklan terakhir tampil }
   };
   const ID_HUB = 'hub';
-  const VERSI_KODE = '2.1.3';
+  const VERSI_KODE = '2.2.0';
 
   /* ===================== Utilitas ===================== */
   const $ = (s) => document.querySelector(s);
@@ -155,8 +156,13 @@
     terakhirMuat: 0,
     sedangMuat: null,
     tautanAwal: null,
+    lanjut: null,       // halaman yang dituju setelah login (mis. pasang-iklan.html)
+    lencana: {},        // { idAplikasi: angka } (bagian 7)
+    iklan: { halamanPesan: '', slot: [], iklan: [] },   // bagian 8.3, tempat = portal
+    bannerDitutup: new Set(),
     login: { hp: '', pin: '' }
   };
+  const IklanUI = window.IklanUI;
   const detikServer = () => sekarang() + S.selisihJam;
   const cariApp = (id) => S.aplikasi.find((a) => a && a.id === id) || null;
   const diTabBaru = (app) => app.id === ID_HUB;   // Hub selalu tab baru, tanpa tiket
@@ -264,10 +270,11 @@
     $$('#layar-login input').forEach((i) => { i.value = ''; });
     pesanLogin('');
     terapkanPaket(paket);
+    if (S.lanjut) { location.href = S.lanjut; return; }   // kembali ke halaman pasang iklan
     tampilPortal();
     bukaTautanAwal();
-    tampilkanPopup();
-    ajakInstal();
+    jadwalkanPopup();
+    muatLencana(true);
   }
 
   /* ===================== Paket portal ===================== */
@@ -281,8 +288,9 @@
     S.pengumuman = Array.isArray(p.pengumuman) ? p.pengumuman.filter((x) => x && x.id) : [];
     S.tiket = (p.tiket && typeof p.tiket === 'object') ? Object.assign({}, p.tiket) : {};
     S.tiketBerakhir = p.tiketBerakhir || 0;
+    S.iklan = rapikanIklan(p.iklan);
     S.terakhirMuat = Date.now();
-    simpan.taruh(KUNCI.paket, { pengguna: S.pengguna, aplikasi: S.aplikasi, pengumuman: S.pengumuman });
+    simpan.taruh(KUNCI.paket, { pengguna: S.pengguna, aplikasi: S.aplikasi, pengumuman: S.pengumuman, iklan: S.iklan });
     rapikanBingkai();
     render();
   }
@@ -293,8 +301,12 @@
     Object.keys(S.bingkai).forEach(tutupBingkai);
     Object.assign(S, {
       sesi: null, sesiBerakhir: 0, pengguna: null, aplikasi: [], pengumuman: [],
-      tiket: {}, tiketBerakhir: 0, aktif: null, bingkai: {}, hidup: [], terakhirMuat: 0
+      tiket: {}, tiketBerakhir: 0, aktif: null, bingkai: {}, hidup: [], terakhirMuat: 0,
+      lencana: {}, iklan: { halamanPesan: '', slot: [], iklan: [] }
     });
+    S.bannerDitutup.clear();
+    $('#iklan-banner').replaceChildren();
+    $('#iklan-tombol').replaceChildren();
     S.terpakai.clear();
     antrean = [];
     $$('dialog[open]').forEach((d) => d.close());
@@ -348,11 +360,11 @@
     rak.replaceChildren();
     S.aplikasi.forEach((app) => {
       const peran = labelPeran(app);
-      const ikonW = el('span', { class: 'ikon-wadah' }, ikonApp(app));
+      const ikonW = el('span', { class: 'ikon-wadah' }, ikonApp(app), el('span', { class: 'lencana-app', hidden: true }));
       if (diTabBaru(app)) ikonW.append(el('span', { class: 'tanda-luar' }, svgPakai('i-tab')));
       rak.append(el('li', null,
         el('button', {
-          type: 'button', class: 'ubin',
+          type: 'button', class: 'ubin', 'data-app': app.id,
           'aria-label': app.nama + (diTabBaru(app) ? ' (dibuka di tab baru)' : ''),
           onclick: () => bukaApp(app.id)
         },
@@ -375,7 +387,7 @@
         'aria-current': S.aktif === app.id ? 'page' : null,
         onclick: () => bukaApp(app.id)
       },
-        ikonApp(app),
+        el('span', { class: 'ikon-wadah' }, ikonApp(app), el('span', { class: 'lencana-app', hidden: true })),
         el('span', { class: 'label-sisi', text: app.nama }),
         diTabBaru(app) ? svgPakai('i-tab', 'tanda-luar-kecil') : null
       ));
@@ -383,6 +395,8 @@
     $('#menu-beranda').setAttribute('aria-current', S.aktif ? 'false' : 'page');
 
     renderPengumumanRingkas();
+    renderLencana();
+    renderIklan();
   }
 
   function tandaiAktif() {
@@ -547,6 +561,7 @@
     if (!app) return;
     clearTimeout(b.timer); clearTimeout(b.cek);
     b.status = 'tiket'; b.pesan = '';
+    b.iklanLoading = undefined;   // dipilih ulang secara acak setiap kali memuat
     segarkanPemuat();
     const r = await alamatSekali(app, extra);
     if (S.bingkai[b.id] !== b) return;               // sudah ditutup/keluar
@@ -611,6 +626,16 @@
     }
     $('#pemuat-teks').textContent = teks;
     $('#pemuat-putar').hidden = !putar;
+    // Iklan "loading": kartu kecil di bawah indikator berputar, hilang bersama layar loading (bagian 8.2).
+    const wadahIklan = $('#pemuat-iklan');
+    if (putar) {
+      if (b.iklanLoading === undefined) b.iklanLoading = pilihIklan('loading');
+      const pilih = b.iklanLoading;
+      if (pilih && wadahIklan.dataset.untuk !== b.id + '|' + (pilih.iklan ? pilih.iklan.id : pilih.slot.id)) {
+        wadahIklan.replaceChildren(IklanUI.kartu({ jenis: 'loading', iklan: pilih.iklan, slot: pilih.slot, halamanPesan: S.iklan.halamanPesan }));
+        wadahIklan.dataset.untuk = b.id + '|' + (pilih.iklan ? pilih.iklan.id : pilih.slot.id);
+      } else if (!pilih) { wadahIklan.replaceChildren(); wadahIklan.dataset.untuk = ''; }
+    } else { wadahIklan.replaceChildren(); wadahIklan.dataset.untuk = ''; }
     p.hidden = false;
   }
 
@@ -664,6 +689,9 @@
     $('#sapaan').textContent = sapaan();
     tandaiAktif();
     ukurUlangBingkai();
+    renderIklan();            // banner/tombol: iklan dipilih acak lagi setiap kali tampil
+    muatLencana(false);       // paling sering sekali per menit
+    jadwalkanPopup();
   }
   function keBeranda() {
     if (history.state && history.state.app) history.back();
@@ -706,17 +734,14 @@
 
   let antrean = [];
   let totalAntrean = 0;
-  function tampilkanPopup() {
-    const ada = new Set(antrean.map((p) => p.id));
-    const baru = belumDitutup().filter((p) => !ada.has(p.id));
-    if (!baru.length && !antrean.length) return;
-    antrean = antrean.concat(baru);
-    totalAntrean += baru.length;
+  function mulaiAntreanPengumuman(daftar) {
+    antrean = daftar.slice();
+    totalAntrean = antrean.length;
     tampilBerikut();
   }
   function tampilBerikut() {
     const dlg = $('#dlg-umum');
-    if (!antrean.length) { totalAntrean = 0; if (dlg.open) dlg.close(); renderPengumumanRingkas(); lanjutkanAjakan(); return; }
+    if (!antrean.length) { totalAntrean = 0; renderPengumumanRingkas(); if (dlg.open) dlg.close(); return; }
     const p = antrean[0];
     const ke = totalAntrean - antrean.length + 1;
     $('#umum-urutan').textContent = totalAntrean > 1 ? 'Pengumuman ' + ke + ' dari ' + totalAntrean : 'Pengumuman';
@@ -737,16 +762,19 @@
   $('#umum-tutup').addEventListener('click', tutupPopup);
   $('#dlg-umum').addEventListener('cancel', (e) => { e.preventDefault(); tutupPopup(); });
 
+  // Tombol 🔔 menampilkan jumlah pengumuman aktif yang BELUM DIBACA (bagian 6).
   function renderPengumumanRingkas() {
+    const belum = belumDitutup().length;
     const n = S.pengumuman.length;
-    $$('[data-lencana]').forEach((x) => { x.textContent = String(n); x.hidden = n === 0; });
+    $$('[data-lencana]').forEach((x) => { x.textContent = belum > 9 ? '9+' : String(belum); x.hidden = belum === 0; });
+    $('#kepala-umum').setAttribute('aria-label', belum ? 'Pengumuman, ' + belum + ' belum dibaca' : 'Pengumuman');
     const k = $('#kartu-umum');
     if (!n) { k.hidden = true; return; }
     const p = S.pengumuman[0];
     k.replaceChildren(
       svgPakai('i-umum'),
       el('span', null,
-        el('strong', { text: n > 1 ? n + ' pengumuman aktif' : 'Pengumuman' }),
+        el('strong', { text: belum ? belum + ' pengumuman belum dibaca' : (n > 1 ? n + ' pengumuman aktif' : 'Pengumuman') }),
         el('span', { text: p.judul || '' })
       )
     );
@@ -769,9 +797,10 @@
       })));
     }
     $('#dlg-semua').showModal();
+    S.pengumuman.forEach((p) => tandaiDitutup(p.id));   // sudah dibaca semua
+    renderPengumumanRingkas();
   }
   $('#semua-tutup').addEventListener('click', () => $('#dlg-semua').close());
-  $('#dlg-semua').addEventListener('close', () => lanjutkanAjakan());
   ['#sisi-umum', '#kepala-umum', '#kartu-umum'].forEach((s) => $(s).addEventListener('click', bukaSemuaPengumuman));
 
   /* ===================== Keluar ===================== */
@@ -800,7 +829,12 @@
     if (S.sedangMuat) return S.sedangMuat;
     S.sedangMuat = (async () => {
       const r = await hub('portal', { sesi: S.sesi });
-      if (r.ok) { terapkanPaket(r); tampilkanPopup(); return true; }
+      if (r.ok) {
+        terapkanPaket(r);
+        jadwalkanPopup();
+        if (alasan !== 'awal') muatLencana(alasan === 'berkala');
+        return true;
+      }
       if (r.kode === 'SESI_HABIS') { sesiHabis(r.pesan); return false; }
       if (alasan === 'awal' && !S.pengguna) tampilAwal(r.pesan, true);
       else if (alasan !== 'berkala') toast(r.pesan);
@@ -817,6 +851,7 @@
     if (document.visibilityState !== 'visible' || !S.sesi) return;
     ukurUlangBingkai();
     if (Date.now() - S.terakhirMuat > 30000) muatData('kembali');
+    jadwalkanPopup();
   }
   document.addEventListener('visibilitychange', saatKembali);
   window.addEventListener('pageshow', (e) => { if (e.persisted) saatKembali(); });
@@ -850,6 +885,12 @@
   function bacaTautanAwal() {
     const q = new URLSearchParams(location.search);
     let id = q.get('app');
+    if (q.get('lanjut') === 'pasang') {   // hanya halaman milik portal sendiri
+      const slot = q.get('slot');
+      S.lanjut = 'pasang-iklan.html' + (slot ? '?slot=' + encodeURIComponent(slot) : '');
+    }
+    q.delete('lanjut');
+    q.delete('slot');
     q.delete('app');
     q.delete('tiket');
     q.delete('diagnosa');
@@ -865,15 +906,149 @@
     bukaApp(t.id, { extra: t.extra, otomatis: true });
   }
 
+  /* ===================== Lencana (bagian 7) ===================== */
+  let terakhirLencana = 0;
+  let sedangLencana = false;
+  async function muatLencana(paksa) {
+    if (!S.sesi) return;
+    if (!S.aplikasi.some((a) => a.lencana === true)) { S.lencana = {}; renderLencana(); return; }
+    if (sedangLencana || (!paksa && Date.now() - terakhirLencana < 60000)) return;
+    sedangLencana = true;
+    terakhirLencana = Date.now();
+    const r = await hub('lencana', { sesi: S.sesi });
+    sedangLencana = false;
+    if (r.ok && r.lencana && typeof r.lencana === 'object') { S.lencana = r.lencana; renderLencana(); }
+    else if (r.kode === 'SESI_HABIS') sesiHabis(r.pesan);
+    // galat lain: diam saja, lencana lama tetap (bagian 7.1)
+  }
+  function renderLencana() {
+    $$('[data-app]').forEach((tombol) => {
+      const badge = tombol.querySelector('.lencana-app');
+      if (!badge) return;
+      const app = cariApp(tombol.dataset.app);
+      const n = app && app.lencana === true ? Math.floor(Number(S.lencana[app.id]) || 0) : 0;
+      badge.textContent = n > 9 ? '9+' : (n > 0 ? String(n) : '');
+      badge.hidden = n <= 0;
+      if (tombol.classList.contains('ubin') && app) {
+        tombol.setAttribute('aria-label', app.nama + (diTabBaru(app) ? ' (dibuka di tab baru)' : '') + (n > 0 ? ', ' + n + ' perlu ditindaklanjuti' : ''));
+      }
+    });
+  }
+
+  /* ===================== Iklan (bagian 8) ===================== */
+  function rapikanIklan(x) {
+    const d = (x && typeof x === 'object') ? x : {};
+    const slot = (Array.isArray(d.slot) ? d.slot : []).filter((s) => s && s.id && (!s.tempat || s.tempat === 'portal'));
+    const ids = new Set(slot.map((s) => s.id));
+    const iklan = (Array.isArray(d.iklan) ? d.iklan : []).filter((i) => i && i.id && ids.has(i.slot));
+    return { halamanPesan: typeof d.halamanPesan === 'string' ? d.halamanPesan : '', slot, iklan };
+  }
+  // Untuk satu slot: iklan acak, atau kartu "Space ini disewakan" bila kosong dan diizinkan, atau null.
+  function isiSlot(slot) {
+    const daftar = S.iklan.iklan.filter((i) => i.slot === slot.id);
+    if (daftar.length) return { slot, iklan: IklanUI.pilihAcak(daftar) };
+    return slot.tampilkanSaatKosong ? { slot, iklan: null } : null;
+  }
+  function pilihIklan(jenis) {
+    const pilihan = S.iklan.slot.filter((s) => s.jenis === jenis).map(isiSlot).filter(Boolean);
+    return IklanUI.pilihAcak(pilihan);
+  }
+
+  function renderIklan() {
+    // Banner di beranda (bisa ditutup)
+    const wb = $('#iklan-banner');
+    wb.replaceChildren();
+    S.iklan.slot.filter((s) => s.jenis === 'banner' && !S.bannerDitutup.has(s.id)).forEach((slot) => {
+      const p = isiSlot(slot);
+      if (!p) return;
+      wb.append(IklanUI.kartu({
+        jenis: 'banner', iklan: p.iklan, slot, halamanPesan: S.iklan.halamanPesan,
+        onTutup: () => { S.bannerDitutup.add(slot.id); renderIklan(); }
+      }));
+    });
+    // Tombol kecil mengambang
+    const wt = $('#iklan-tombol');
+    wt.replaceChildren();
+    S.iklan.slot.filter((s) => s.jenis === 'tombol').forEach((slot) => {
+      const p = isiSlot(slot);
+      if (!p) return;
+      wt.append(IklanUI.tombolMengambang({ iklan: p.iklan, onKetuk: () => bukaKartuIklan(p, false) }));
+    });
+    $('#beranda').classList.toggle('ada-tombol-iklan', wt.childElementCount > 0);
+  }
+
+  // Satu kartu iklan di jendela (dipakai pop-up dan detail tombol).
+  function bukaKartuIklan(p, catatPopup) {
+    if (catatPopup) catatIklanPopup(p.slot.id);
+    $('#dlg-iklan-isi').replaceChildren(IklanUI.kartu({ jenis: 'popup', iklan: p.iklan, slot: p.slot, halamanPesan: S.iklan.halamanPesan }));
+    $('#dlg-iklan').showModal();
+  }
+  $('#iklan-tutup').addEventListener('click', () => $('#dlg-iklan').close());
+  $('#iklan-silang').addEventListener('click', () => $('#dlg-iklan').close());
+
+  // Catatan waktu pop-up per slot di localStorage; bila tidak tersedia, paling banyak sekali per pembukaan halaman.
+  const penyimpananAda = (() => { try { localStorage.setItem('portal.uji', '1'); localStorage.removeItem('portal.uji'); return true; } catch (e) { return false; } })();
+  let popupIklanHalamanIni = false;
+  function catatIklanPopup(idSlot) {
+    popupIklanHalamanIni = true;
+    if (!penyimpananAda) return;
+    const m = simpan.ambil(KUNCI.iklanPopup) || {};
+    m[idSlot] = Date.now();
+    simpan.taruh(KUNCI.iklanPopup, m);
+  }
+  function iklanPopupSiap() {
+    if (!penyimpananAda && popupIklanHalamanIni) return null;
+    const m = (penyimpananAda && simpan.ambil(KUNCI.iklanPopup)) || {};
+    const siap = S.iklan.slot.filter((s) => {
+      if (s.jenis !== 'popup' || !IklanUI.dalamJamTayang(s.jamTayang)) return false;
+      const selang = Math.max(30, Number(s.selangMenit) || 120) * 60000;
+      return Date.now() - (Number(m[s.id]) || 0) >= selang;
+    }).map(isiSlot).filter(Boolean);
+    return IklanUI.pilihAcak(siap);
+  }
+
+  function bukaDaftarIklan() {
+    const isi = $('#daftar-iklan-isi');
+    isi.replaceChildren();
+    const daftar = S.iklan.iklan;
+    if (!daftar.length) isi.append(el('p', { class: 'dialog-teks', text: 'Belum ada iklan yang sedang tayang.' }));
+    daftar.forEach((i) => {
+      const slot = S.iklan.slot.find((s) => s.id === i.slot);
+      isi.append(IklanUI.kartu({ jenis: 'popup', iklan: i, slot, halamanPesan: S.iklan.halamanPesan }));
+    });
+    isi.append(el('p', { class: 'daftar-iklan-pasang' },
+      'Punya usaha? ',
+      el('a', { href: IklanUI.urlPesan(S.iklan.halamanPesan), target: '_blank', rel: 'noopener noreferrer', text: 'Pasang iklan di sini' })));
+    $('#dlg-daftar-iklan').showModal();
+  }
+  $('#daftar-iklan-tutup').addEventListener('click', () => $('#dlg-daftar-iklan').close());
+  ['#kepala-iklan', '#sisi-iklan'].forEach((x) => $(x).addEventListener('click', bukaDaftarIklan));
+
+  /* ===================== Satu pop-up sekaligus (bagian 5.4) =====================
+   * Urutan: pengumuman belum dibaca → ajakan instal → iklan pop-up.
+   * Pop-up berikutnya baru tampil setelah jendela sebelumnya ditutup.
+   * Ajakan instal dan iklan pop-up hanya muncul di beranda, tidak menyela aplikasi yang sedang dipakai.
+   */
+  let timerPopup = null;
+  function jadwalkanPopup(jeda) {
+    clearTimeout(timerPopup);
+    timerPopup = setTimeout(jalankanPopup, jeda == null ? 250 : jeda);
+  }
+  function jalankanPopup() {
+    if (!S.sesi || $('#layar-portal').hidden || document.querySelector('dialog[open]')) return;
+    const belum = belumDitutup();
+    if (belum.length) { mulaiAntreanPengumuman(belum); return; }
+    if (S.aktif) return;
+    if (bolehAjak()) { tampilAjakan(); return; }
+    const iklan = iklanPopupSiap();
+    if (iklan) bukaKartuIklan(iklan, true);
+  }
+  // Setiap jendela ditutup → periksa pop-up berikutnya.
+  $$('dialog').forEach((d) => d.addEventListener('close', () => jadwalkanPopup()));
+
   /* ===================== Instal ke perangkat ===================== */
-  const hariIni = () => {
-    const d = new Date();
-    return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
-  };
+  const JEDA_AJAKAN = 2 * 3600 * 1000;   // ajakan instal paling sering sekali tiap 2 jam
   let promptPasang = null;
-  let ajakanDiminta = false;   // sudah login, ajakan boleh muncul di pemuatan halaman ini
-  let ajakanSudah = false;     // ajakan sudah tampil di pemuatan halaman ini
-  let ajakanTertunda = false;  // menunggu pop-up lain selesai
   const iOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const ponsel = iOS || /android|mobile/i.test(navigator.userAgent);
   function sudahTerpasang() {
@@ -892,22 +1067,15 @@
   }
   function bolehAjak() {
     if (!S.sesi || sudahTerpasang() || simpan.ambil(KUNCI.terinstal)) return false;
-    if (simpan.ambil(KUNCI.instalHari) === hariIni()) return false;   // sudah tampil hari ini
+    if (Date.now() - (Number(simpan.ambil(KUNCI.instalTerakhir)) || 0) < JEDA_AJAKAN) return false;
     return ponsel || !!promptPasang;   // di laptop hanya bila browser bisa menginstal
   }
-  function ajakInstal() {
-    ajakanDiminta = true;
-    if (ajakanSudah || !bolehAjak()) return;
-    if (document.querySelector('dialog[open]')) { ajakanTertunda = true; return; }
-    ajakanTertunda = false;
-    ajakanSudah = true;
-    simpan.taruh(KUNCI.instalHari, hariIni());
-    simpan.hapus('portal.instalNanti');   // sisa versi 2.1.0
+  function tampilAjakan() {
+    simpan.taruh(KUNCI.instalTerakhir, Date.now());
+    simpan.hapus('portal.instalNanti');   // sisa versi lama
+    simpan.hapus('portal.instalHari');
     isiAjakan();
     $('#dlg-instal').showModal();
-  }
-  function lanjutkanAjakan() {
-    if (ajakanTertunda) setTimeout(ajakInstal, 250);
   }
   function nantiSaja() {
     if ($('#dlg-instal').open) $('#dlg-instal').close();
@@ -927,7 +1095,7 @@
     promptPasang = e;
     simpan.hapus(KUNCI.terinstal);   // browser hanya menawarkan instal bila belum terinstal
     perbaruiTombolInstal();
-    if (ajakanDiminta) ajakInstal();
+    jadwalkanPopup();
   });
   window.addEventListener('appinstalled', () => {
     simpan.taruh(KUNCI.terinstal, true);
@@ -951,7 +1119,8 @@
     bacaTautanAwal();
 
     const s = simpan.ambil(KUNCI.sesi);
-    if (!s || !s.sesi) { tampilLogin(); return; }
+    if (!s || !s.sesi) { tampilLogin(S.lanjut ? 'Masuk dulu untuk memesan iklan.' : '', 'info'); return; }
+    if (S.lanjut) { location.href = S.lanjut; return; }
     S.sesi = s.sesi;
     S.sesiBerakhir = s.sesiBerakhir || 0;
     if (S.sesiBerakhir && S.sesiBerakhir + 300 < sekarang()) { sesiHabis(); return; }
@@ -961,6 +1130,7 @@
       S.pengguna = c.pengguna;
       S.aplikasi = Array.isArray(c.aplikasi) ? c.aplikasi : [];
       S.pengumuman = Array.isArray(c.pengumuman) ? c.pengumuman : [];
+      S.iklan = rapikanIklan(c.iklan);
       render();
       tampilPortal();
     } else {
@@ -970,11 +1140,12 @@
       if (!ok) return;
       tampilPortal();
       bukaTautanAwal();
-      ajakInstal();
+      jadwalkanPopup();
+      muatLencana(true);   // setelah beranda tampil, tanpa menahan beranda
     });
   }
 
-  $('#awal-coba').addEventListener('click', () => { tampilAwal('Memuat portal…'); muatData('awal').then((ok) => { if (ok) { tampilPortal(); bukaTautanAwal(); } }); });
+  $('#awal-coba').addEventListener('click', () => { tampilAwal('Memuat portal…'); muatData('awal').then((ok) => { if (ok) { tampilPortal(); bukaTautanAwal(); muatLencana(true); } }); });
   $('#awal-lain').addEventListener('click', () => { bersihkanLokal(); tampilLogin(); });
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') {

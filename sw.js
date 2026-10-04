@@ -1,7 +1,8 @@
 // Naikkan versi ini setiap kali file portal diubah.
-const CACHE = 'portal-v6';
+const CACHE = 'portal-v8';
 const ASET = [
-  './', './index.html', './style.css', './app.js', './config.js', './manifest.webmanifest',
+  './', './index.html', './style.css', './app.js', './iklan.js', './config.js', './manifest.webmanifest',
+  './pasang-iklan.html', './pasang-iklan.js',
   './icon-192.png', './icon-512.png', './favicon-48.png'
 ];
 

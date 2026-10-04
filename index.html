@@ -17,6 +17,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script src="config.js"></script>
+<script src="iklan.js" defer></script>
 <script src="app.js" defer></script>
 </head>
 <body>
@@ -29,7 +30,10 @@
     <symbol id="i-tab" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></g></symbol>
     <symbol id="i-tautan" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></g></symbol>
     <symbol id="i-rumah" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></g></symbol>
-    <symbol id="i-umum" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></g></symbol>
+    <!-- 🔔 pengumuman (bagian 6) -->
+    <symbol id="i-umum" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></g></symbol>
+    <!-- Iklan (bagian 8), sengaja berbeda dari 🔔 -->
+    <symbol id="i-iklan" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></g></symbol>
     <symbol id="i-keluar" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></g></symbol>
     <symbol id="i-menu" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></g></symbol>
     <symbol id="i-silang" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></g></symbol>
@@ -133,6 +137,10 @@
         </span>
         <span class="label-sisi">Pengumuman</span>
       </button>
+      <button type="button" class="menu-item" id="sisi-iklan" title="Iklan">
+        <svg class="menu-svg"><use href="#i-iklan"/></svg>
+        <span class="label-sisi">Iklan</span>
+      </button>
       <div class="akun">
         <span class="avatar" data-avatar></span>
         <div class="label-sisi akun-teks">
@@ -159,6 +167,9 @@
               <svg><use href="#i-umum"/></svg>
               <span class="lencana" data-lencana hidden></span>
             </button>
+            <button type="button" class="tombol-kepala" id="kepala-iklan" aria-label="Iklan">
+              <svg><use href="#i-iklan"/></svg>
+            </button>
             <button type="button" class="tombol-kepala" id="kepala-akun" aria-label="Akun dan keluar">
               <span class="avatar" data-avatar></span>
             </button>
@@ -171,6 +182,7 @@
 
       <div class="isi-beranda">
         <button type="button" class="kartu-umum" id="kartu-umum" hidden></button>
+        <div class="iklan-banner-wadah" id="iklan-banner"></div>
         <h2 class="judul-bagian">Aplikasi</h2>
         <ul class="rak" id="rak" aria-label="Daftar aplikasi"></ul>
         <p class="kosong" id="rak-kosong" hidden>Belum ada aplikasi untuk akun Anda. Hubungi admin Hub bila ini keliru.</p>
@@ -182,6 +194,9 @@
         </div>
       </div>
     </section>
+
+    <!-- Tombol iklan mengambang (bagian 8.2) -->
+    <div class="iklan-tombol-wadah" id="iklan-tombol"></div>
 
     <!-- Layar aplikasi -->
     <section id="layar-app" class="layar-app">
@@ -207,6 +222,7 @@
           <div class="putar" id="pemuat-putar" aria-hidden="true"></div>
           <p id="pemuat-teks" role="status"></p>
           <div class="pemuat-aksi" id="pemuat-aksi"></div>
+          <div class="pemuat-iklan" id="pemuat-iklan"></div>
         </div>
       </div>
     </section>
@@ -224,6 +240,22 @@
   <div class="dialog-aksi">
     <button type="button" class="tombol utama" id="umum-tutup">Tutup</button>
   </div>
+</dialog>
+
+<dialog id="dlg-iklan" class="dialog dialog-iklan jendela-iklan" aria-label="Iklan">
+  <button type="button" class="tombol-ikon dialog-silang" id="iklan-silang" aria-label="Tutup iklan"><svg><use href="#i-silang"/></svg></button>
+  <div class="dialog-isi" id="dlg-iklan-isi"></div>
+  <div class="dialog-aksi">
+    <button type="button" class="tombol" id="iklan-tutup">Tutup</button>
+  </div>
+</dialog>
+
+<dialog id="dlg-daftar-iklan" class="dialog dialog-iklan" aria-labelledby="daftar-iklan-judul">
+  <div class="dialog-kepala">
+    <h2 class="dialog-judul" id="daftar-iklan-judul">Iklan</h2>
+    <button type="button" class="tombol-ikon" id="daftar-iklan-tutup" aria-label="Tutup"><svg><use href="#i-silang"/></svg></button>
+  </div>
+  <div class="dialog-isi" id="daftar-iklan-isi"></div>
 </dialog>
 
 <dialog id="dlg-semua" class="dialog" aria-labelledby="semua-judul">
