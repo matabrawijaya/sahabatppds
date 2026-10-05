@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Normalisator SOAP — alat uji mandiri</title>
+<style>
+  :root {
+    --paper:#f6f5f1; --panel:#fff; --ink:#1c2321; --ink-soft:#55605c;
+    --line:#dcdbd4; --accent:#0d6e66; --accent-soft:#e4efed;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.5;padding:22px 16px 60px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:980px;margin:0 auto}
+  .kicker{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 6px}
+  h1{font-size:23px;margin:0 0 6px;letter-spacing:-.01em}
+  .lede{color:var(--ink-soft);font-size:14px;margin:0;max-width:64ch}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:20px}
+  @media (max-width:720px){.grid{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;min-height:300px;overflow:hidden}
+  .panel-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:11px 13px;border-bottom:1px solid var(--line)}
+  .panel-title{font-size:13px;font-weight:600}
+  .panel-note{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft)}
+  textarea{flex:1;width:100%;border:0;resize:vertical;padding:13px;font-family:var(--mono);font-size:13px;line-height:1.6;color:var(--ink);background:transparent;outline:none;white-space:pre-wrap;tab-size:2;min-height:240px}
+  textarea::placeholder{color:#a8afa9}
+  #masuk:focus{background:#fbfbf9}
+  .bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:14px}
+  button{font-family:var(--sans);font-size:13.5px;font-weight:600;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:10px 16px;border-radius:8px;cursor:pointer;transition:transform .04s,background .15s,border-color .15s}
+  button:hover{border-color:#c2c1b8}
+  button:active{transform:translateY(1px)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.primary:hover{background:#0b5e57}
+  .meta{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-soft)}
+  .note{margin-top:20px;font-size:12.5px;color:var(--ink-soft);border-top:1px solid var(--line);padding-top:13px;line-height:1.55}
+  .note code{font-family:var(--mono);font-size:11.5px;background:var(--accent-soft);color:#0a544d;padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="kicker">alat uji mandiri · lokal · iterasi normalisator</p>
+  <h1>Normalisator SOAP</h1>
+  <p class="lede">Tempel teks rusak di kiri; hasil rapi muncul otomatis di kanan. Semua di browser, tanpa deploy. Fungsi di dalam sama persis dengan yang akan digabung ke <code>Code_DualMode.gs</code>.</p>
+
+  <div class="grid">
+    <section class="panel">
+      <div class="panel-head"><span class="panel-title">Teks masuk (rusak)</span><span class="panel-note">tempel / ketik</span></div>
+      <textarea id="masuk" placeholder="Tempel teks yang berantakan di sini…" spellcheck="false"></textarea>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><span class="panel-title">Teks pulih</span><span class="panel-note">boleh diedit</span></div>
+      <textarea id="keluar" placeholder="Hasil rapi muncul di sini." spellcheck="false"></textarea>
+    </section>
+  </div>
+
+  <div class="bar">
+    <button class="primary" id="rapikan">Rapikan</button>
+    <button id="salin">Salin Hasil</button>
+    <button id="bersih">Bersihkan</button>
+    <span class="meta" id="meta">normalisasiSOAP · iterasi 8</span>
+  </div>
+
+  <p class="note">Aturan aktif — pulih pasti: <b>baris baru</b> penanda seksi &amp; sub-header, <code>_gt_</code>→<code>&gt;</code>. Asumsi domain: <code>( )</code>→<code>(+)</code>, <code> / </code>→<code> +/+ </code> (mati bila ada header pasien bernomor). Inferensi: pemecahan baris seksi A.</p>
+</div>
+
+<script>
+/* =======================================================================
+ * ===  FUNGSI YANG AKAN DIGABUNG KE Code_DualMode.gs (salin blok ini)  ===
+ * ===  Identik client-side & server-side (JS murni).                   ===
+ * ======================================================================= */
+function normalisasiSOAP(teks){
+  var t=String(teks||'');
+  t=t.replace(/[\u200B-\u200D\u2060\uFEFF]/g,'').replace(/\|/g,' ');
+  t=t.replace(/-\s*_gt_/g,'->').replace(/_gt_/g,'>').replace(/_lt_/g,'<');
+  t=t.replace(/(\S)\(\s*\)/g,'$1 (+)').replace(/\(\s*\)/g,'(+)');
+  var adaHeaderPasien=/(^|\n)\s*\d+\.\s+\S[^\n]*?(?:\/[^\n]*){3,}/.test(t);
+  if(!adaHeaderPasien) t=t.replace(/ \/ (?!(?:GA|LA)\b)/g,' +/+ ');
+  t=t.replace(/\+\/\+ ([,.])/g,'+/+$1');
+  t=t.replace(/[ \t]+/g,' ').trim();
+  // DCR/echo yang DIDULUI asterisk menempel di teks SALAH -> sub-header (paling awal, sblm asterisk lain)
+  t=t.replace(/\*((?:DCR|[Ee]cho)[^\n*]*)\*?/g,function(m,p1,off,s){
+    var before=s.slice(Math.max(0,off-12),off);
+    if(/[Pp]ro(?: [Cc]ek)? $/.test(before)) return m;
+    return '\n*'+p1.trim()+'*';
+  });
+
+  // Lepas asterisk bold pada NAMA HEADER yang dikenal (nilai abnormal spt *edema (+)* tetap utuh)
+  var stripH=['Pemeriksaan Fungsi Palpebra','Fungsi Palpebra post op','Fungsi Palpebra pre op','Fungsi Palpebra','Fungsi N II','Hertel post op day 1','Hertel post op','Hertel pre op','Hertel','Segmen Anterior','Funduskopi','Detail ODS','GBM','Ishihara','Konfrontasi','Diplopia','Kesimpulan','KESIMPULAN','WHO QOL','CAS Score','Eugogo','AG','Hasil CT Scan','Hasil PA','Hasil','CT Scan','MRI','USG','Lab','OD','OS'].sort(function(a,b){return b.length-a.length;});
+  t=t.replace(new RegExp('\\*\\s*((?:'+stripH.join('|')+')(?![A-Za-z])[^*\\n]*)\\*','g'),'$1');
+  t=t.replace(/[ \t]*•[ \t]*/g,'\n- ');
+  t=t.replace(/(^|[^\w*]|[a-z.])([SOAP])\s*:/g,'$1\n\n*$2 :*\n');
+  // header hasil penunjang (radiologi/PA/kultur/lab/apa pun "Hasil ...", CT Scan/MRI/USG)
+  t=t.replace(/\b(Hasil(?= [A-Z])|CT(?=[ -])|MRI(?= )|USG(?= )|Lab(?= ))/g,function(m,p1,off,s){
+    var before=s.slice(Math.max(0,off-12),off);
+    if(/[Pp]ro(?: [Cc]ek)? $/.test(before)) return m;
+    if(p1.charAt(0)!=='H' && /[Hh]asil $/.test(before)) return m;
+    return '\n'+p1;
+  });
+
+  var bareHeaders=['Pemeriksaan Fungsi Palpebra','Fungsi Palpebra post op','Fungsi Palpebra pre op',
+    'Fungsi Palpebra','Fungsi N II','Hertel post op day 1','Hertel post op','Hertel pre op','Hertel',
+    'Segmen Anterior','Segmen anterior lain','Funduskopi','Detail ODS','GBM','Ishihara',
+    'Konfrontasi','Diplopia','Kesimpulan','KESIMPULAN','WHO QOL','CAS Score','Eugogo','Base']
+    .sort(function(a,b){return b.length-a.length;});
+  t=t.replace(new RegExp('[ \\t]*\\b('+bareHeaders.join('|')+')\\b','g'),'\n$1');
+  t=t.replace(/(Funduskopi:?)[ \t]+(FR\b)/g,'$1\n$2');
+
+  var colonCues=['Palpebra','Conjungtiva','Cornea','COA','Iris','Pupil','Lensa','TIO',
+    'Segmen anterior','PN II','Vasa','Retina','Makula','Physical','Psychological','Social','Environment'];
+  colonCues.forEach(function(c){ t=t.replace(new RegExp('[ \\t]*('+c+'\\s*:)','g'),'\n$1'); });
+
+  t=t.replace(/[ \t]*\b(AG)\b(?=\s*:?\s*OD)/g,'\n$1');
+  t=t.replace(/([^\n\-])\s+(Riwayat(?=[^\n:]{0,30}:))/g,'$1\n$2');
+  t=t.replace(/[ \t]*\b(ODS?|OS)\s*:/g,'\n$1 :');
+  t=t.replace(/[ \t]*\b(Visus\b[^\n:]{0,25}:)/g,'\n$1');
+  t=t.replace(/[ \t]+(OD|OS)(?=\s*\n?\s*Visus)/g,'\n$1');
+  t=t.replace(/[ \t]+(OD|OS)(?=[ \t]+\d)/g,'\n$1');   // Hertel dsb: "OD 18"/"OS 18" tanpa titik dua
+
+  t=t.replace(/\bDetail[ \t]*\n[ \t]*ODS/g,'Detail ODS');
+  t=t.replace(/\bPemeriksaan[ \t]*\n[ \t]*Fungsi/g,'Pemeriksaan Fungsi');
+  t=t.replace(/\bHasil[ \t]*\n[ \t]*(CT|PA)/g,'Hasil $1');
+
+  t=t.replace(/(\n\n\*A :\*\n)([\s\S]*?)(\n\n\*P :\*|$)/,function(m,head,body,tail){
+    var b=body.replace(/\s+(ODS|OD|OS)\s+/g,'\n$1 ').replace(/^\s+/,'');
+    return head+b+tail;
+  });
+
+  t=t.replace(/([^\n ]+)[ \t]+(FPH|FPV|MRD|MLD|LA|SS)[ \t]+([^\n ]+)/g,'\n$1 $2 $3');
+  t=t.replace(/([^\n ]+)[ \t]+(SS)(?=[ \t]*(?:\n|$))/g,'\n$1 $2');
+
+  t=t.replace(/[ \t]+-[ \t]+(?=[A-Z])/g,'\n- ');
+  t=t.replace(/\b(Kesimpulan|KESIMPULAN)(\s*:)?[ \t]+(?=\S)/g,function(m,w,c){return w+(c?':':'')+'\n';});
+
+  t=t.replace(/^\s*\*S :\*\n([\s\S]*?)\n\n\*S :\*/,'$1\n\n*S :*');
+
+  // === BUNGKUS SUB-HEADER + spasi antar blok; label grup memeluk anaknya ===
+  var subExact=/^(OD|OS|Segmen Anterior|Funduskopi:?|Pemeriksaan Fungsi Palpebra|Fungsi Palpebra(?: post op| pre op)?|Fungsi N II|Hertel(?: post op day 1| post op| pre op)?|GBM ?:?|Ishihara ?:?|AG ?:?|Diplopia ?:?|Konfrontasi ?:?|WHO QOL:?|Kesimpulan:?|KESIMPULAN:?)$/;
+  var subLine=/^((?:Hasil [A-Z]|CT[ -]|MRI |USG |Lab )[^\n]*)$/;
+  var radInner=/^(?:Hasil [A-Z]|CT[ -]|MRI |USG |Lab |DCR |[Ee]cho)/;
+  function inner(x){ return x.replace(/^\*/,'').replace(/\*$/,'').trim(); }
+  function isGroupLabel(x){ if(!/^\*.*\*$/.test(x)) return false; var v=inner(x); return v==='Segmen Anterior'||v==='Fungsi N II'||radInner.test(v); }
+  var lines=t.split('\n'), out=[];
+  for(var i=0;i<lines.length;i++){
+    var ln=lines[i], s=ln.trim();
+    var isSection=/^\*[SOAP] :\*$/.test(s);
+    var already=/^\*.*\*$/.test(s);
+    var isSub=false, val=ln;
+    if(s && !already && (subExact.test(s)||subLine.test(s))){ val='*'+s+'*'; isSub=true; }
+    else if(already && !isSection){ isSub=true; }
+    if(isSub){
+      var k=out.length-1; while(k>=0 && out[k].trim()==='') k--;
+      var prevGrup = k>=0 && isGroupLabel(out[k].trim());
+      while(out.length && out[out.length-1].trim()==='') out.pop();
+      if(out.length && !prevGrup) out.push('');   // label grup -> anak memeluk (tanpa blank)
+    }
+    out.push(val);
+  }
+  t=out.join('\n');
+
+  t=t.replace(/(\*[SOAP] :\*)\n{2,}/g,'$1\n');
+  t=t.replace(/[ \t]+\n/g,'\n').replace(/\n[ \t]+/g,'\n').replace(/\n{3,}/g,'\n\n');
+  return t.trim();
+}
+/* =======================  AKHIR BLOK YANG DIGABUNG  ===================== */
+
+(function () {
+  var masuk = document.getElementById('masuk');
+  var keluar = document.getElementById('keluar');
+  var rapikanBtn = document.getElementById('rapikan');
+  var salinBtn = document.getElementById('salin');
+  var bersihBtn = document.getElementById('bersih');
+
+  function jalankan() { keluar.value = normalisasiSOAP(masuk.value); }
+
+  masuk.addEventListener('input', jalankan);         // otomatis saat ketik/tempel
+  rapikanBtn.addEventListener('click', jalankan);    // manual
+  bersihBtn.addEventListener('click', function () { masuk.value = ''; keluar.value = ''; masuk.focus(); });
+  salinBtn.addEventListener('click', function () {
+    var txt = keluar.value;
+    if (!txt) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(flash, function () { legacy(txt) && flash(); });
+    } else { legacy(txt) && flash(); }
+  });
+  function legacy(t) { var a = document.createElement('textarea'); a.value = t; a.style.position = 'fixed'; a.style.opacity = '0'; document.body.appendChild(a); a.select(); var ok = false; try { ok = document.execCommand('copy'); } catch (e) {} document.body.removeChild(a); return ok; }
+  function flash() { var o = salinBtn.textContent; salinBtn.textContent = 'Tersalin ✓'; setTimeout(function () { salinBtn.textContent = o; }, 1300); }
+
+  masuk.focus();
+})();
+</script>
+</body>
+</html>
