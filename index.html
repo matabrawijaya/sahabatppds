@@ -18,6 +18,7 @@
 <link rel="stylesheet" href="style.css">
 <script src="config.js"></script>
 <script src="iklan.js" defer></script>
+<script src="pemandangan.js" defer></script>
 <script src="app.js" defer></script>
 </head>
 <body>
@@ -33,6 +34,9 @@
     <!-- 🔔 pengumuman (bagian 6) -->
     <symbol id="i-umum" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></g></symbol>
     <!-- Iklan (bagian 8), sengaja berbeda dari 🔔 -->
+    <symbol id="i-cari" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></g></symbol>
+    <symbol id="i-petak" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></g></symbol>
+    <symbol id="i-daftar" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><circle cx="4.5" cy="6" r="1" fill="currentColor"/><circle cx="4.5" cy="12" r="1" fill="currentColor"/><circle cx="4.5" cy="18" r="1" fill="currentColor"/></g></symbol>
     <symbol id="i-iklan" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></g></symbol>
     <symbol id="i-keluar" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></g></symbol>
     <symbol id="i-menu" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></g></symbol>
@@ -126,7 +130,12 @@
         <span class="label-sisi">Beranda</span>
       </button>
       <div class="sisi-judul label-sisi">Aplikasi</div>
+      <div class="sisi-cari label-sisi">
+        <svg aria-hidden="true"><use href="#i-cari"/></svg>
+        <input type="search" id="cari-sisi" placeholder="Cari aplikasi" aria-label="Cari aplikasi di menu" autocomplete="off" enterkeyhint="go">
+      </div>
       <div id="sisi-app" class="sisi-app"></div>
+      <p class="sisi-tidak-ada label-sisi" id="sisi-tidak-ada" role="status" hidden>Tidak ada yang cocok.</p>
     </nav>
 
     <div class="sisi-bawah">
@@ -158,10 +167,13 @@
   <div class="konten">
     <!-- Beranda -->
     <section id="beranda" class="beranda">
-      <header class="kepala">
-        <svg class="kepala-iris" aria-hidden="true"><use href="#i-iris"/></svg>
+      <header class="kepala" id="kepala">
+        <div class="kepala-tirai" aria-hidden="true"></div>
         <div class="kepala-baris">
-          <span class="kepala-merek nama-portal">Portal</span>
+          <span class="kepala-merek">
+            <span class="kepala-logo" aria-hidden="true"><svg><use href="#i-iris"/></svg></span>
+            <span class="nama-portal">Portal</span>
+          </span>
           <div class="kepala-aksi">
             <button type="button" class="tombol-kepala" id="kepala-umum" aria-label="Pengumuman">
               <svg><use href="#i-umum"/></svg>
@@ -175,16 +187,29 @@
             </button>
           </div>
         </div>
-        <p class="sapaan" id="sapaan">Selamat datang</p>
-        <h1 class="kepala-nama" data-nama></h1>
-        <p class="kepala-sub" data-sub></p>
+        <div class="kepala-teks">
+          <h1 class="kepala-salam" id="sapaan">Selamat datang</h1>
+          <p class="kepala-nama" data-nama></p>
+          <p class="kepala-sub" data-sub></p>
+        </div>
       </header>
 
       <div class="isi-beranda">
         <button type="button" class="kartu-umum" id="kartu-umum" hidden></button>
         <div class="iklan-banner-wadah" id="iklan-banner"></div>
-        <h2 class="judul-bagian">Aplikasi</h2>
+        <div class="alat-app">
+          <h2 class="judul-bagian">Aplikasi</h2>
+          <div class="pilih-tampilan" role="group" aria-label="Tampilan daftar aplikasi">
+            <button type="button" class="tombol-tampilan" data-tampilan-pilih="grid" aria-pressed="true" aria-label="Tampilan petak" title="Petak"><svg aria-hidden="true"><use href="#i-petak"/></svg></button>
+            <button type="button" class="tombol-tampilan" data-tampilan-pilih="list" aria-pressed="false" aria-label="Tampilan daftar" title="Daftar"><svg aria-hidden="true"><use href="#i-daftar"/></svg></button>
+          </div>
+        </div>
+        <div class="cari-wadah">
+          <svg aria-hidden="true"><use href="#i-cari"/></svg>
+          <input type="search" class="cari-isian" id="cari-beranda" placeholder="Cari aplikasi" aria-label="Cari aplikasi" autocomplete="off" enterkeyhint="go">
+        </div>
         <ul class="rak" id="rak" aria-label="Daftar aplikasi"></ul>
+        <p class="kosong" id="rak-tidak-ada" role="status" hidden></p>
         <p class="kosong" id="rak-kosong" hidden>Belum ada aplikasi untuk akun Anda. Hubungi admin Hub bila ini keliru.</p>
 
         <div class="bawah">

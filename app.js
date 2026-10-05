@@ -14,10 +14,12 @@
     ditutup: 'portal.pengumumanDitutup', // id pengumuman yang sudah ditutup
     instalTerakhir: 'portal.instalTerakhir', // waktu (ms) ajakan instal terakhir tampil
     terinstal: 'portal.terinstal',       // tanda portal pernah diinstal dari browser ini
-    iklanPopup: 'portal.iklanPopup'      // { idSlot: waktu (ms) pop-up iklan terakhir tampil }
+    iklanPopup: 'portal.iklanPopup',     // { idSlot: waktu (ms) pop-up iklan terakhir tampil }
+    sering: 'portal.seringDibuka',       // { idAplikasi: jumlah dibuka di perangkat ini }
+    tampilan: 'portal.tampilanApp'       // 'grid' atau 'list'
   };
   const ID_HUB = 'hub';
-  const VERSI_KODE = '2.3.0';
+  const VERSI_KODE = '2.4.0';
 
   /* ===================== Utilitas ===================== */
   const $ = (s) => document.querySelector(s);
@@ -73,12 +75,24 @@
     for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
     return WARNA[h % WARNA.length];
   }
+  // Sama dengan suasana header: pagi 05–10, siang 11–14, sore 15–17, malam 18–04.
   function sapaan() {
-    const j = new Date().getHours();
-    if (j < 11) return 'Selamat pagi';
-    if (j < 15) return 'Selamat siang';
-    if (j < 18) return 'Selamat sore';
-    return 'Selamat malam';
+    const s = window.Pemandangan ? window.Pemandangan.suasana() : (() => {
+      const j = new Date().getHours();
+      return j >= 5 && j < 11 ? 'pagi' : j >= 11 && j < 15 ? 'siang' : j >= 15 && j < 18 ? 'sore' : 'malam';
+    })();
+    return 'Selamat ' + s;
+  }
+  // "dr. Budi Santoso, Sp.M(K)" → "dr. Budi"
+  function namaPendek(nama) {
+    const kata = String(nama || '').split(',')[0].trim().split(/\s+/).filter(Boolean);
+    const gelar = [];
+    while (kata.length > 1 && /^(prof|dr|drg|ir|h|hj)\.?$/i.test(kata[0])) gelar.push(kata.shift());
+    return gelar.concat(kata.slice(0, 1)).join(' ');
+  }
+  function perbaruiSalam() {
+    const n = S.pengguna && S.pengguna.nama ? namaPendek(S.pengguna.nama) : '';
+    $('#sapaan').textContent = sapaan() + (n ? ', ' + n : '');
   }
   const layarLebar = () => window.matchMedia('(min-width: 900px)').matches;
 
@@ -167,7 +181,7 @@
   /** Pengirim berasal dari bingkai aplikasi (atau bingkai di dalamnya)? */
   function dariBingkaiHub(sumber, bingkai) {
     try {
-      for (var w = sumber, i = 0; w && i < 4; i++) {
+      for (var w = sumber, i = 0; w && i < 8; i++) {   // GAS: halaman aplikasi 3 tingkat di bawah portal
         if (w === bingkai.contentWindow) return true;
         if (w === w.parent) break;
         w = w.parent;
@@ -430,50 +444,105 @@
     $$('[data-nama]').forEach((x) => { x.textContent = nama; });
     $$('[data-sub]').forEach((x) => { x.textContent = sub; x.hidden = !sub; });
     $$('[data-avatar]').forEach((x) => { x.textContent = inisial(nama); });
-    $('#sapaan').textContent = sapaan();
+    perbaruiSalam();
+    renderDaftarApp();
+    renderPengumumanRingkas();
+    renderIklan();
+  }
 
-    // Beranda
-    const rak = $('#rak');
-    rak.replaceChildren();
-    S.aplikasi.forEach((app) => {
-      const peran = labelPeran(app);
-      const ikonW = el('span', { class: 'ikon-wadah' }, ikonApp(app), el('span', { class: 'lencana-app', hidden: true }));
-      if (diTabBaru(app)) ikonW.append(el('span', { class: 'tanda-luar' }, svgPakai('i-tab')));
-      rak.append(el('li', null,
-        el('button', {
-          type: 'button', class: 'ubin', 'data-app': app.id,
-          'aria-label': app.nama + (diTabBaru(app) ? ' (dibuka di tab baru)' : ''),
-          onclick: () => bukaApp(app.id)
-        },
-          ikonW,
-          el('span', { class: 'ubin-teks' },
-            el('span', { class: 'ubin-nama', text: app.nama }),
-            peran ? el('span', { class: 'ubin-sub', text: peran }) : null
-          )
-        )
-      ));
-    });
-    $('#rak-kosong').hidden = S.aplikasi.length > 0;
+  /* ===================== Daftar aplikasi: cari, urutan, tampilan ===================== */
+  const cari = { beranda: '', sisi: '' };
+  const normal = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  function cocok(app, q) {
+    if (!q) return true;
+    return normal(app.nama).includes(q) || normal(app.id).includes(q);
+  }
+  // Paling sering dibuka di perangkat ini di atas; sisanya mengikuti urutan dari Hub.
+  function urutanApp() {
+    const n = simpan.ambil(KUNCI.sering) || {};
+    return S.aplikasi.map((a, i) => ({ a, i, n: Number(n[a.id]) || 0 })).sort((x, y) => (y.n - x.n) || (x.i - y.i)).map((x) => x.a);
+  }
+  function catatBuka(id) {
+    const n = simpan.ambil(KUNCI.sering) || {};
+    n[id] = (Number(n[id]) || 0) + 1;
+    simpan.taruh(KUNCI.sering, n);
+  }
+  function tampilanApp() { return simpan.ambil(KUNCI.tampilan) === 'list' ? 'list' : 'grid'; }
 
-    // Sidebar
-    const sisi = $('#sisi-app');
-    sisi.replaceChildren();
-    S.aplikasi.forEach((app) => {
-      sisi.append(el('button', {
-        type: 'button', class: 'menu-item', title: app.nama, 'data-app': app.id,
-        'aria-current': S.aktif === app.id ? 'page' : null,
+  function ubinApp(app) {
+    const peran = labelPeran(app);
+    const ikonW = el('span', { class: 'ikon-wadah' }, ikonApp(app), el('span', { class: 'lencana-app', hidden: true }));
+    if (diTabBaru(app)) ikonW.append(el('span', { class: 'tanda-luar' }, svgPakai('i-tab')));
+    return el('li', null,
+      el('button', {
+        type: 'button', class: 'ubin', 'data-app': app.id,
+        'aria-label': app.nama + (diTabBaru(app) ? ' (dibuka di tab baru)' : ''),
         onclick: () => bukaApp(app.id)
       },
-        el('span', { class: 'ikon-wadah' }, ikonApp(app), el('span', { class: 'lencana-app', hidden: true })),
-        el('span', { class: 'label-sisi', text: app.nama }),
-        diTabBaru(app) ? svgPakai('i-tab', 'tanda-luar-kecil') : null
+        ikonW,
+        el('span', { class: 'ubin-teks' },
+          el('span', { class: 'ubin-nama', text: app.nama }),
+          peran ? el('span', { class: 'ubin-sub', text: peran }) : null
+        )
       ));
-    });
-    $('#menu-beranda').setAttribute('aria-current', S.aktif ? 'false' : 'page');
+  }
+  function itemSisi(app) {
+    return el('button', {
+      type: 'button', class: 'menu-item', title: app.nama, 'data-app': app.id,
+      'aria-current': S.aktif === app.id ? 'page' : null,
+      onclick: () => bukaApp(app.id)
+    },
+      el('span', { class: 'ikon-wadah' }, ikonApp(app), el('span', { class: 'lencana-app', hidden: true })),
+      el('span', { class: 'label-sisi', text: app.nama }),
+      diTabBaru(app) ? svgPakai('i-tab', 'tanda-luar-kecil') : null
+    );
+  }
 
-    renderPengumumanRingkas();
+  function renderDaftarApp() {
+    const urut = urutanApp();
+    const tampil = tampilanApp();
+    // Beranda
+    const qB = normal(cari.beranda);
+    const rak = $('#rak');
+    rak.dataset.tampilan = tampil;
+    rak.replaceChildren(...urut.filter((a) => cocok(a, qB)).map(ubinApp));
+    $('#rak-kosong').hidden = S.aplikasi.length > 0;
+    const tidakAda = S.aplikasi.length > 0 && !rak.childElementCount;
+    $('#rak-tidak-ada').hidden = !tidakAda;
+    if (tidakAda) $('#rak-tidak-ada').textContent = 'Tidak ada aplikasi yang cocok dengan “' + cari.beranda.trim() + '”.';
+    $$('[data-tampilan-pilih]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tampilanPilih === tampil)));
+    // Sidebar
+    const qS = normal(cari.sisi);
+    const sisi = $('#sisi-app');
+    sisi.replaceChildren(...urut.filter((a) => cocok(a, qS)).map(itemSisi));
+    const tidakAdaSisi = S.aplikasi.length > 0 && !sisi.childElementCount;
+    $('#sisi-tidak-ada').hidden = !tidakAdaSisi;
+    $('#menu-beranda').setAttribute('aria-current', S.aktif ? 'false' : 'page');
     renderLencana();
-    renderIklan();
+  }
+
+  function pasangCari(sel, kunci) {
+    const input = $(sel);
+    input.addEventListener('input', () => { cari[kunci] = input.value; renderDaftarApp(); });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && input.value) { e.preventDefault(); input.value = ''; cari[kunci] = ''; renderDaftarApp(); }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const pertama = (kunci === 'beranda' ? $('#rak .ubin') : $('#sisi-app .menu-item'));
+        if (pertama) pertama.click();
+      }
+    });
+  }
+  pasangCari('#cari-beranda', 'beranda');
+  pasangCari('#cari-sisi', 'sisi');
+  $$('[data-tampilan-pilih]').forEach((b) => b.addEventListener('click', () => {
+    simpan.taruh(KUNCI.tampilan, b.dataset.tampilanPilih);
+    renderDaftarApp();
+  }));
+  function kosongkanCari() {
+    if (!cari.beranda && !cari.sisi) return;
+    cari.beranda = ''; cari.sisi = '';
+    $('#cari-beranda').value = ''; $('#cari-sisi').value = '';
   }
 
   function tandaiAktif() {
@@ -495,6 +564,7 @@
     $('#beranda').setAttribute('aria-hidden', String(modeApp));
     $('#app-bilah').inert = !modeApp;              // hanya bilah atas, bukan bingkai
     $('#wadah').setAttribute('aria-hidden', String(!modeApp));
+    if (window.Pemandangan) window.Pemandangan.aktif(!modeApp);
     diagnosa(modeApp ? 'mode: aplikasi' : 'mode: beranda');
   }
 
@@ -584,11 +654,14 @@
     if (!app) { toast('Aplikasi itu tidak tersedia untuk akun Anda.'); return; }
 
     if (diTabBaru(app)) {
+      if (!opsi.otomatis) catatBuka(id);
       bukaHubTabBaru(app, opsi.otomatis);   // tanpa tiket, tanpa parameter
       return;
     }
 
     if (opsi.param) S.lokasi[id] = saringParamHub(opsi.param);
+    if (!opsi.tanpaRiwayat) catatBuka(id);
+    kosongkanCari();
     S.aktif = id;
     $('#app-judul').textContent = app.nama;
     document.title = app.nama + ' – ' + K.NAMA;
@@ -780,7 +853,8 @@
     $('#sisi-lipat').setAttribute('aria-expanded', 'true');
     $('#sisi-lipat').setAttribute('aria-label', 'Lipat menu');
     document.title = K.NAMA;
-    $('#sapaan').textContent = sapaan();
+    perbaruiSalam();
+    renderDaftarApp();        // aplikasi yang baru dipakai naik ke atas
     tandaiAktif();
     ukurUlangBingkai();
     renderIklan();            // banner/tombol: iklan dipilih acak lagi setiap kali tampil
@@ -1019,19 +1093,32 @@
     return b && app ? { app, bingkai: b.f } : null;
   }
   window.addEventListener('message', (ev) => {
-    const t = ambilTampil();
-    if (!t || !dariBingkaiHub(ev.source, t.bingkai)) return;
-    try { if (!asalBolehHub(ev.origin, t.app.url)) return; } catch (e) { return; }
     const d = ev.data;
-    if (!d || typeof d !== 'object' || d.hk !== 1) return;
+    const jenis = d && typeof d === 'object' ? String(d.pesan || '?') : typeof d;
+    diagnosa('pesan "' + jenis + '" dari ' + ev.origin);
+    const t = ambilTampil();
+    if (!t) { diagnosa('  ditolak: tidak ada aplikasi yang sedang tampil'); return; }
+    if (!dariBingkaiHub(ev.source, t.bingkai)) { diagnosa('  ditolak: bukan dari bingkai ' + t.app.id); return; }
+    let asalOk = false;
+    try { asalOk = asalBolehHub(ev.origin, t.app.url); } catch (e) { asalOk = false; }
+    if (!asalOk) { diagnosa('  ditolak: asal tidak dikenal'); return; }
+    if (!d || typeof d !== 'object' || d.hk !== 1) { diagnosa('  ditolak: format (hk harus 1)'); return; }
+    diagnosa('  diterima dari ' + t.app.id);
     if (d.pesan === 'lokasi') {
       S.lokasi[t.app.id] = saringParamHub(d.param);
       setelAlamat(tautanApp(t.app.id), history.state, false);
       diagnosa('lokasi ' + t.app.id + ': ' + kueriHub(S.lokasi[t.app.id]));
     } else if (d.pesan === 'bagikan') {
-      if ($('#dlg-bagikan').open) return;
+      if ($('#dlg-bagikan').open) { diagnosa('  diabaikan: dialog bagikan masih terbuka'); return; }
       const judul = typeof d.judul === 'string' && d.judul.trim() ? d.judul.trim().slice(0, 100) : t.app.nama;
-      bukaDialogBagikan(judul, tautanPortalHub(ALAMAT_PORTAL, t.app.id, saringParamHub(d.param)));
+      const tautan = tautanPortalHub(ALAMAT_PORTAL, t.app.id, saringParamHub(d.param));
+      try {
+        bukaDialogBagikan(judul, tautan);
+      } catch (e) {
+        // Dialog gagal tampil: setidaknya salin link-nya.
+        diagnosa('  dialog gagal: ' + (e && e.message));
+        salin(tautan).then((ok) => toast(ok ? 'Link disalin.' : 'Link: ' + tautan));
+      }
     }
   });
 
@@ -1269,6 +1356,9 @@
 
   /* ===================== Mulai ===================== */
   function mulai() {
+    if (window.Pemandangan) {
+      try { window.Pemandangan.pasang($('#kepala'), { saatGantiSuasana: perbaruiSalam }); } catch (e) { /* header tetap tampil tanpa animasi */ }
+    }
     document.title = K.NAMA;
     $$('.nama-portal').forEach((x) => { x.textContent = K.NAMA; });
     $('#merek-alamat').textContent = location.host;

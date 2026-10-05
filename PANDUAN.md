@@ -8,6 +8,7 @@ Portal ini mengikuti **KONTRAK_INTEGRASI.md versi 1.4** (bagian 5–9). Semua da
 | `config.js` | **Satu-satunya file yang perlu diisi**: alamat Hub, nama portal |
 | `index.html`, `style.css`, `app.js` | Tampilan dan logika portal |
 | `iklan.js` | Tampilan iklan, dipakai portal dan halaman pesan iklan |
+| `pemandangan.js` | Pemandangan bergerak di header beranda (digambar dengan kode) |
 | `pasang-iklan.html`, `pasang-iklan.js` | Halaman pemesanan iklan |
 | `sw.js`, `manifest.webmanifest`, `*.png` | Supaya bisa dipasang di HP |
 
@@ -36,6 +37,11 @@ Repo ini publik. **Jangan menaruh kunci, PIN, atau rahasia apa pun di file mana 
 - **Iklan:** banner di beranda, tombol kecil mengambang, kartu di layar loading, dan pop-up. Semua berlabel "Iklan" dan berwarna ungu, berbeda dari pengumuman (🔔). Semua iklan yang sedang tayang bisa dilihat lewat tombol Iklan (ikon label).
 - **Satu pop-up sekaligus:** pengumuman belum dibaca → ajakan instal → iklan pop-up. Ajakan instal dan iklan pop-up hanya muncul di beranda.
 - **Halaman pesan iklan:** `pasang-iklan.html`. Isi alamat lengkapnya di Hub → Iklan → alamat halaman pesan.
+
+- **Header pemandangan:** gunung, bukit, pinus, dan danau dengan suasana pagi (05–10), siang (11–14), sore (15–17), malam (18–04) mengikuti jam perangkat. Berhenti otomatis saat aplikasi dibuka, header tidak terlihat, atau portal di latar belakang. Bila HP diatur "kurangi animasi", pemandangan tampil diam.
+- **Cari aplikasi:** di beranda dan sidebar, menyaring nama dan ID saat mengetik. Enter membuka hasil pertama.
+- **Urutan aplikasi:** yang paling sering dibuka di perangkat ini tampil paling atas.
+- **Petak atau daftar:** pilihan tampilan disimpan di perangkat.
 
 ## Mengubah portal
 Edit file di GitHub (ikon pensil → Commit). Bila mengubah `index.html`, `style.css`, `app.js`, atau `config.js`, naikkan juga angka di `sw.js` (mis. `portal-v3` → `portal-v4`).
