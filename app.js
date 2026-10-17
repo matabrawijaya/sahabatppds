@@ -20,7 +20,7 @@
     cuaca: 'portal.cuaca'                // { waktu (ms), data } cuaca terakhir dari Hub
   };
   const ID_HUB = 'hub';
-  const VERSI_KODE = '2.5.0';
+  const VERSI_KODE = '2.6.0';
 
   /* ===================== Utilitas ===================== */
   const $ = (s) => document.querySelector(s);
@@ -476,19 +476,65 @@
   }
   function tampilanApp() { return simpan.ambil(KUNCI.tampilan) === 'list' ? 'list' : 'grid'; }
 
-  function ubinApp(app) {
+  /* Teks berjalan: nama yang tidak muat bergerak pelan bolak-balik supaya terbaca utuh.
+   * Petak: boleh 2 baris; baru berjalan bila lebih dari 2 baris. Daftar & sidebar: 1 baris. */
+  function namaJalan(teks, cls, maksBaris) {
+    return el('span', { class: cls + ' nama-jalan', 'data-baris': String(maksBaris || 1), title: teks },
+      el('span', { class: 'jalan-isi', text: teks }));
+  }
+  const roJalan = 'ResizeObserver' in window ? new ResizeObserver((daftar) => daftar.forEach((e) => {
+    const w = e.target, lebar = Math.round(e.contentRect.width);
+    if (w._lebar === lebar) return;      // hanya lebar yang menentukan; abaikan perubahan tinggi
+    w._lebar = lebar;
+    ukurJalan(w);
+  })) : null;
+  let urutJalan = 0;
+  function ukurJalan(w) {
+    const isi = w.firstElementChild;
+    if (!isi) return;
+    w.classList.remove('berjalan');
+    w.style.removeProperty('--geser');
+    const lebar = w.clientWidth;
+    if (!lebar) return;                  // tersembunyi; diukur lagi saat tampil
+    const dua = w.dataset.baris === '2' && w.closest('.rak') && w.closest('.rak').dataset.tampilan !== 'list';
+    w.classList.toggle('dua-baris', !!dua);
+    let lebih;
+    if (dua) {
+      const lh = parseFloat(getComputedStyle(isi).lineHeight) || 18;
+      lebih = isi.scrollHeight > lh * 2 + 2 || isi.scrollWidth > lebar + 1;
+    } else {
+      lebih = isi.scrollWidth > lebar + 1;
+    }
+    if (!lebih) return;
+    w.classList.add('berjalan');
+    const jarak = Math.ceil(isi.scrollWidth - w.clientWidth + 16);
+    w.style.setProperty('--geser', -jarak + 'px');
+    w.style.setProperty('--durasi', Math.max(5, jarak / 9).toFixed(1) + 's');
+    w.style.setProperty('--tunda', ((urutJalan++ % 5) * 0.8).toFixed(1) + 's');   // tidak bergerak serempak
+  }
+  function pasangJalan() {
+    if (!roJalan) { $$('.nama-jalan').forEach(ukurJalan); return; }
+    roJalan.disconnect();
+    urutJalan = 0;
+    $$('.nama-jalan').forEach((w) => { w._lebar = -1; roJalan.observe(w); });
+  }
+
+  const namaBagian = (app) => (tautanLuar(app) ? 'Tautan' : 'Aplikasi');
+  function ubinApp(app, opsi) {
+    opsi = opsi || {};
     const peran = labelPeran(app);
     const ikonW = el('span', { class: 'ikon-wadah' }, ikonApp(app), el('span', { class: 'lencana-app', hidden: true }));
     if (diTabBaru(app)) ikonW.append(el('span', { class: 'tanda-luar' }, svgPakai('i-tab')));
+    const label = app.nama + (opsi.asal ? ', ' + namaBagian(app).toLowerCase() : '') + (diTabBaru(app) ? ' (dibuka di tab baru)' : '');
     return el('li', null,
       el('button', {
-        type: 'button', class: 'ubin', 'data-app': app.id,
-        'aria-label': app.nama + (diTabBaru(app) ? ' (dibuka di tab baru)' : ''),
+        type: 'button', class: 'ubin', 'data-app': app.id, 'data-label': label, 'aria-label': label,
         onclick: () => bukaApp(app.id)
       },
         ikonW,
         el('span', { class: 'ubin-teks' },
-          el('span', { class: 'ubin-nama', text: app.nama }),
+          namaJalan(app.nama, 'ubin-nama', 2),
+          opsi.asal ? el('span', { class: 'tag-bagian tag-' + (tautanLuar(app) ? 'tautan' : 'aplikasi'), text: namaBagian(app) }) : null,
           peran ? el('span', { class: 'ubin-sub', text: peran }) : null
         )
       ));
@@ -500,32 +546,66 @@
       onclick: () => bukaApp(app.id)
     },
       el('span', { class: 'ikon-wadah' }, ikonApp(app), el('span', { class: 'lencana-app', hidden: true })),
-      el('span', { class: 'label-sisi', text: app.nama }),
+      namaJalan(app.nama, 'label-sisi', 1),
       diTabBaru(app) ? svgPakai('i-tab', 'tanda-luar-kecil') : null
     );
+  }
+
+  // Nilai kecocokan untuk mengurutkan hasil pencarian (kecil = lebih cocok).
+  function nilaiCocok(app, q) {
+    const n = normal(app.nama);
+    if (n.startsWith(q)) return 0;
+    if (n.split(/[\s\-_.]+/).some((k) => k.startsWith(q))) return 1;
+    if (n.includes(q)) return 2;
+    return 3;   // cocok lewat ID
   }
 
   function renderDaftarApp() {
     const urut = urutanApp();
     const tampil = tampilanApp();
-    // Beranda
+    const aplikasi = urut.filter((a) => !tautanLuar(a));
+    const tautan = urut.filter(tautanLuar);
+    // Beranda: bagian Aplikasi dan Tautan; saat mencari, satu daftar hasil berlabel asal bagian
     const qB = normal(cari.beranda);
-    const rak = $('#rak');
-    rak.dataset.tampilan = tampil;
-    rak.replaceChildren(...urut.filter((a) => cocok(a, qB)).map(ubinApp));
+    ['#rak', '#rak-tautan', '#rak-hasil'].forEach((x) => { $(x).dataset.tampilan = tampil; });
+    if (qB) {
+      const hasil = urut.filter((a) => cocok(a, qB))
+        .map((a, i) => ({ a, i, v: nilaiCocok(a, qB) })).sort((x, y) => (x.v - y.v) || (x.i - y.i)).map((x) => x.a);
+      $('#rak-hasil').replaceChildren(...hasil.map((a) => ubinApp(a, { asal: true })));
+      $('#judul-hasil').textContent = 'Hasil pencarian (' + hasil.length + ')';
+      $('#bagian-hasil').hidden = !hasil.length;
+      $('#rak').replaceChildren();
+      $('#rak-tautan').replaceChildren();
+      $('#bagian-aplikasi').hidden = true;
+      $('#bagian-tautan').hidden = true;
+      $('#rak-tidak-ada').hidden = hasil.length > 0;
+      if (!hasil.length) $('#rak-tidak-ada').textContent = 'Tidak ada aplikasi atau tautan yang cocok dengan “' + cari.beranda.trim() + '”.';
+      $('#status-cari').textContent = hasil.length ? hasil.length + ' hasil' : 'Tidak ada hasil';
+    } else {
+      $('#rak-hasil').replaceChildren();
+      $('#bagian-hasil').hidden = true;
+      $('#rak').replaceChildren(...aplikasi.map((a) => ubinApp(a)));
+      $('#rak-tautan').replaceChildren(...tautan.map((a) => ubinApp(a)));
+      $('#bagian-aplikasi').hidden = !aplikasi.length;
+      $('#bagian-tautan').hidden = !tautan.length;
+      $('#rak-tidak-ada').hidden = true;
+      $('#status-cari').textContent = '';
+    }
     $('#rak-kosong').hidden = S.aplikasi.length > 0;
-    const tidakAda = S.aplikasi.length > 0 && !rak.childElementCount;
-    $('#rak-tidak-ada').hidden = !tidakAda;
-    if (tidakAda) $('#rak-tidak-ada').textContent = 'Tidak ada aplikasi yang cocok dengan “' + cari.beranda.trim() + '”.';
     $$('[data-tampilan-pilih]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tampilanPilih === tampil)));
-    // Sidebar
+    // Sidebar: dua kelompok; saat mencari, kelompok yang kosong disembunyikan
     const qS = normal(cari.sisi);
+    const kelompok = [['Aplikasi', aplikasi], ['Tautan', tautan]]
+      .map(([judul, daftar]) => [judul, daftar.filter((a) => cocok(a, qS))]).filter(([, d]) => d.length);
     const sisi = $('#sisi-app');
-    sisi.replaceChildren(...urut.filter((a) => cocok(a, qS)).map(itemSisi));
-    const tidakAdaSisi = S.aplikasi.length > 0 && !sisi.childElementCount;
-    $('#sisi-tidak-ada').hidden = !tidakAdaSisi;
+    sisi.replaceChildren(...kelompok.flatMap(([judul, daftar], k) => [
+      k ? el('div', { class: 'sisi-pemisah', 'aria-hidden': 'true' }) : null,
+      el('div', { class: 'sisi-judul label-sisi', text: judul })
+    ].filter(Boolean).concat(daftar.map(itemSisi))));
+    $('#sisi-tidak-ada').hidden = !(S.aplikasi.length > 0 && !kelompok.length);
     $('#menu-beranda').setAttribute('aria-current', S.aktif ? 'false' : 'page');
     renderLencana();
+    pasangJalan();
   }
 
   function pasangCari(sel, kunci) {
@@ -535,7 +615,7 @@
       if (e.key === 'Escape' && input.value) { e.preventDefault(); input.value = ''; cari[kunci] = ''; renderDaftarApp(); }
       if (e.key === 'Enter') {
         e.preventDefault();
-        const pertama = (kunci === 'beranda' ? $('#rak .ubin') : $('#sisi-app .menu-item'));
+        const pertama = (kunci === 'beranda' ? $('.bagian-app:not([hidden]) .ubin') : $('#sisi-app .menu-item'));
         if (pertama) pertama.click();
       }
     });
@@ -1190,7 +1270,7 @@
       badge.textContent = n > 9 ? '9+' : (n > 0 ? String(n) : '');
       badge.hidden = n <= 0;
       if (tombol.classList.contains('ubin') && app) {
-        tombol.setAttribute('aria-label', app.nama + (diTabBaru(app) ? ' (dibuka di tab baru)' : '') + (n > 0 ? ', ' + n + ' perlu ditindaklanjuti' : ''));
+        tombol.setAttribute('aria-label', (tombol.dataset.label || app.nama) + (n > 0 ? ', ' + n + ' perlu ditindaklanjuti' : ''));
       }
     });
   }

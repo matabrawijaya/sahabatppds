@@ -1,5 +1,5 @@
 // Naikkan versi ini setiap kali file portal diubah.
-const CACHE = 'portal-v12';
+const CACHE = 'portal-v13';
 const ASET = [
   './', './index.html', './style.css', './app.js', './iklan.js', './pemandangan.js', './config.js', './manifest.webmanifest',
   './pasang-iklan.html', './pasang-iklan.js',

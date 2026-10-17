@@ -39,7 +39,9 @@ Repo ini publik. **Jangan menaruh kunci, PIN, atau rahasia apa pun di file mana 
 - **Halaman pesan iklan:** `pasang-iklan.html`. Isi alamat lengkapnya di Hub → Iklan → alamat halaman pesan.
 
 - **Header pemandangan:** gunung, bukit, pinus, dan danau dengan suasana pagi (05–10), siang (11–14), sore (15–17), malam (18–04) mengikuti jam perangkat. Berhenti otomatis saat aplikasi dibuka, header tidak terlihat, atau portal di latar belakang. Bila HP diatur "kurangi animasi", pemandangan tampil diam.
-- **Cari aplikasi:** di beranda dan sidebar, menyaring nama dan ID saat mengetik. Enter membuka hasil pertama.
+- **Bagian Aplikasi dan Tautan:** beranda dan sidebar memisahkan aplikasi GAS (termasuk Hub) dari tautan luar. Bagian yang kosong tidak ditampilkan.
+- **Cari:** satu kolom untuk aplikasi dan tautan, menyaring nama dan ID saat mengetik. Hasilnya tampil dalam satu daftar, masing-masing berlabel "Aplikasi" atau "Tautan". Enter membuka hasil pertama.
+- **Nama panjang:** nama yang tidak muat bergerak pelan bolak-balik supaya terbaca utuh (tampilan petak boleh 2 baris dulu). Bila HP diatur "kurangi animasi", nama dibiarkan turun baris tanpa bergerak.
 - **Urutan aplikasi:** yang paling sering dibuka di perangkat ini tampil paling atas.
 - **Petak atau daftar:** pilihan tampilan disimpan di perangkat.
 
