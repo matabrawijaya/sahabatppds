@@ -16,10 +16,11 @@
     terinstal: 'portal.terinstal',       // tanda portal pernah diinstal dari browser ini
     iklanPopup: 'portal.iklanPopup',     // { idSlot: waktu (ms) pop-up iklan terakhir tampil }
     sering: 'portal.seringDibuka',       // { idAplikasi: jumlah dibuka di perangkat ini }
-    tampilan: 'portal.tampilanApp'       // 'grid' atau 'list'
+    tampilan: 'portal.tampilanApp',      // 'grid' atau 'list'
+    cuaca: 'portal.cuaca'                // { waktu (ms), data } cuaca terakhir dari Hub
   };
   const ID_HUB = 'hub';
-  const VERSI_KODE = '2.4.0';
+  const VERSI_KODE = '2.5.0';
 
   /* ===================== Utilitas ===================== */
   const $ = (s) => document.querySelector(s);
@@ -256,7 +257,9 @@
   const IklanUI = window.IklanUI;
   const detikServer = () => sekarang() + S.selisihJam;
   const cariApp = (id) => S.aplikasi.find((a) => a && a.id === id) || null;
-  const diTabBaru = (app) => app.id === ID_HUB;   // Hub selalu tab baru, tanpa tiket
+  // Item tabBaru (tautan luar dan Hub) selalu dibuka di tab baru, tanpa tiket, tanpa bingkai (bagian 5.7).
+  const diTabBaru = (app) => app.tabBaru === true || app.id === ID_HUB;
+  const tautanLuar = (app) => app.jenis === 'tautan';
 
   /* ===================== Layar ===================== */
   function tampilLayar(nama) {
@@ -366,6 +369,7 @@
     bukaTautanAwal();
     jadwalkanPopup();
     muatLencana(true);
+    muatCuaca(true);
   }
 
   /* ===================== Paket portal ===================== */
@@ -404,6 +408,9 @@
     $('#pemuat').hidden = true;
     aturMode(false);
     $('#layar-portal').classList.remove('ringkas', 'sisi-buka');
+    cuacaData = null; cuacaTerakhir = 0;
+    simpan.hapus(KUNCI.cuaca);
+    renderCuaca();
   }
 
   function sesiHabis(pesan) {
@@ -565,6 +572,7 @@
     $('#app-bilah').inert = !modeApp;              // hanya bilah atas, bukan bingkai
     $('#wadah').setAttribute('aria-hidden', String(!modeApp));
     if (window.Pemandangan) window.Pemandangan.aktif(!modeApp);
+    if (modeApp) tutupCuaca(false);
     diagnosa(modeApp ? 'mode: aplikasi' : 'mode: beranda');
   }
 
@@ -654,8 +662,14 @@
     if (!app) { toast('Aplikasi itu tidak tersedia untuk akun Anda.'); return; }
 
     if (diTabBaru(app)) {
-      if (!opsi.otomatis) catatBuka(id);
-      bukaHubTabBaru(app, opsi.otomatis);   // tanpa tiket, tanpa parameter
+      if (opsi.otomatis) {
+        // Dari ?buka=: Hub tetap dicoba di tab baru; tautan luar tidak dibuka otomatis (bagian 5.7, 9.3).
+        if (app.id === ID_HUB && !tautanLuar(app)) bukaHubTabBaru(app, true);
+        else tampilBeranda();
+        return;
+      }
+      catatBuka(id);
+      bukaTautanLuar(app.url);   // langsung dari ketukan: tanpa tiket, tanpa parameter
       return;
     }
 
@@ -794,7 +808,8 @@
   }
 
   function bukaTautanLuar(url) {
-    const a = el('a', { href: url, target: '_blank', rel: 'noopener' });
+    if (!/^https?:\/\//i.test(String(url || ''))) { toast('Alamat tautan tidak sah.'); return; }
+    const a = el('a', { href: url, target: '_blank', rel: 'noopener noreferrer' });
     document.body.append(a);
     a.click();
     a.remove();
@@ -1014,13 +1029,14 @@
   }
 
   setInterval(() => {
-    if (document.visibilityState === 'visible') muatData('berkala');
+    if (document.visibilityState === 'visible') { muatData('berkala'); muatCuaca(false); }
   }, Math.max(1, Number(K.MUAT_ULANG_MENIT) || 15) * 60000);
 
   function saatKembali() {
     if (document.visibilityState !== 'visible' || !S.sesi) return;
     ukurUlangBingkai();
     if (Date.now() - S.terakhirMuat > 30000) muatData('kembali');
+    muatCuaca(false);
     jadwalkanPopup();
   }
   document.addEventListener('visibilitychange', saatKembali);
@@ -1290,6 +1306,199 @@
   // Setiap jendela ditutup → periksa pop-up berikutnya.
   $$('dialog').forEach((d) => d.addEventListener('close', () => jadwalkanPopup()));
 
+  /* ===================== Cuaca BMKG (bagian 10) ===================== */
+  const CUACA_SELANG = 30 * 60000;          // paling sering tiap 30 menit
+  let cuacaData = null, cuacaTerakhir = 0, sedangCuaca = false;
+
+  async function muatCuaca(paksa) {
+    if (!S.sesi || sedangCuaca || document.visibilityState === 'hidden') return;
+    if (!paksa && Date.now() - cuacaTerakhir < CUACA_SELANG) return;
+    sedangCuaca = true;
+    cuacaTerakhir = Date.now();
+    const sesi = S.sesi;
+    const r = await hub('cuaca', { sesi });
+    sedangCuaca = false;
+    if (S.sesi !== sesi) return;
+    // ok:false apa pun (termasuk SESI_HABIS): cukup sembunyikan cuaca, tanpa pesan dan tanpa keluar.
+    if (r.ok && r.sekarang && typeof r.sekarang === 'object') {
+      cuacaData = r;
+      simpan.taruh(KUNCI.cuaca, { waktu: Date.now(), data: r });
+    } else {
+      cuacaData = null;
+      simpan.hapus(KUNCI.cuaca);
+    }
+    renderCuaca();
+  }
+  // Saat portal dibuka lagi: pakai cuaca terakhir (maks. 1 jam) supaya header langsung lengkap.
+  function pakaiCuacaTersimpan() {
+    const c = simpan.ambil(KUNCI.cuaca);
+    if (c && c.data && c.data.sekarang && Date.now() - c.waktu < 3600000) {
+      cuacaData = c.data;
+      cuacaTerakhir = c.waktu;
+      renderCuaca();
+    }
+  }
+
+  const angka = (n) => (n == null || n === '' || !isFinite(Number(n)) ? null : Number(n));
+  const suhuTeks = (n) => (angka(n) == null ? '–' : Math.round(angka(n)) + '°');
+  function golongCuaca(c) {
+    const k = String((c && c.kondisi) || '').toLowerCase();
+    if (k.includes('petir')) return 'petir';
+    if (k.includes('hujan')) return 'hujan';
+    if (k.includes('kabut') || k.includes('kabur') || k.includes('asap')) return 'kabut';
+    if (k.includes('berawan tebal')) return 'berawan';
+    if (k.includes('cerah berawan')) return 'cerah-berawan';
+    if (k.includes('berawan')) return 'berawan';
+    if (k.includes('cerah')) return 'cerah';
+    return 'berawan';
+  }
+  const jamDari = (c) => { const m = /\s(\d{1,2}):(\d{2})$/.exec(String((c && c.jamLokal) || '')); return m ? +m[1] : new Date().getHours(); };
+  function ikonCuaca(c, cls) {
+    const g = golongCuaca(c);
+    const malam = (() => { const j = jamDari(c); return j >= 18 || j < 5; })();
+    const id = 'i-cuaca-' + (malam && g === 'cerah' ? 'bulan' : malam && g === 'cerah-berawan' ? 'bulan-berawan' : g);
+    const svg = svgPakai(id, cls);
+    const src = String((c && c.ikon) || '');
+    if (!/^https:\/\//i.test(src)) return svg;
+    const img = el('img', { src, alt: '', class: cls, referrerpolicy: 'no-referrer', decoding: 'async' });
+    img.addEventListener('error', () => img.replaceWith(svg), { once: true });
+    return img;
+  }
+  const ARAH = { N: 'utara', NNE: 'utara-timur laut', NE: 'timur laut', ENE: 'timur-timur laut', E: 'timur', ESE: 'timur-tenggara',
+    SE: 'tenggara', SSE: 'selatan-tenggara', S: 'selatan', SSW: 'selatan-barat daya', SW: 'barat daya', WSW: 'barat-barat daya',
+    W: 'barat', WNW: 'barat-barat laut', NW: 'barat laut', NNW: 'utara-barat laut' };
+  function anginTeks(a) {
+    if (!a || typeof a !== 'object') return '';
+    const v = angka(a.kecepatan);
+    const arah = ARAH[String(a.arah || '').toUpperCase()] || (/^var/i.test(String(a.arah || '')) ? 'arah berubah-ubah' : String(a.arah || ''));
+    const t = v == null ? '' : (Math.round(v * 10) / 10).toLocaleString('id-ID') + ' km/jam';
+    return [t, arah ? (arah === 'arah berubah-ubah' ? arah : 'dari ' + arah) : ''].filter(Boolean).join(' ');
+  }
+  function jamTeks(c, acuan) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})\s(\d{2}):(\d{2})$/.exec(String((c && c.jamLokal) || ''));
+    if (!m) return '';
+    const a = /^(\d{4})-(\d{2})-(\d{2})/.exec(String((acuan && acuan.jamLokal) || ''));
+    let awalan = '';
+    if (a) {
+      const beda = Math.round((Date.UTC(+m[1], +m[2] - 1, +m[3]) - Date.UTC(+a[1], +a[2] - 1, +a[3])) / 86400000);
+      awalan = beda === 1 ? 'Besok ' : beda === 2 ? 'Lusa ' : '';
+    }
+    return awalan + m[4] + '.' + m[5];
+  }
+  function waktuDiambil(d) {
+    const t = angka(d.diambil);
+    if (t == null) return '';
+    const tua = Date.now() / 1000 - t > 3 * 3600;
+    if (!d.cadangan && !tua) return '';
+    let zona = 'Asia/Jakarta';
+    try { const z = d.lokasi && d.lokasi.zonaWaktu; if (z) { new Intl.DateTimeFormat('id-ID', { timeZone: z }); zona = z; } } catch (e) { /* pakai WIB */ }
+    const f = new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short', timeZone: zona }).formatToParts(new Date(t * 1000));
+    const ambil = (k) => (f.find((p) => p.type === k) || {}).value || '';
+    const hariIni = new Intl.DateTimeFormat('en-CA', { timeZone: zona }).format(new Date()) === new Intl.DateTimeFormat('en-CA', { timeZone: zona }).format(new Date(t * 1000));
+    return 'Data terakhir pukul ' + ambil('hour') + '.' + ambil('minute') + (hariIni ? '' : ', ' + ambil('day') + ' ' + ambil('month'));
+  }
+
+  function renderCuaca() {
+    const chip = $('#cuaca-chip');
+    const c = cuacaData && cuacaData.sekarang;
+    if (!c) {
+      chip.hidden = true;
+      tutupCuaca(false);
+      if (window.Pemandangan && window.Pemandangan.aturCuaca) window.Pemandangan.aturCuaca(null);
+      renderTentangCuaca();
+      return;
+    }
+    chip.replaceChildren(ikonCuaca(c, 'cuaca-chip-ikon'), el('span', { class: 'cuaca-chip-suhu', text: suhuTeks(c.suhu) }));
+    chip.setAttribute('aria-label', 'Cuaca ' + (c.kondisi || '') + ', ' + suhuTeks(c.suhu).replace('°', ' derajat') + '. Sumber BMKG. Ketuk untuk detail.');
+    chip.title = (c.kondisi || 'Cuaca') + ' · Sumber: BMKG';
+    chip.hidden = false;
+    if (window.Pemandangan && window.Pemandangan.aturCuaca) window.Pemandangan.aturCuaca(c);
+    if (!$('#cuaca-kartu').hidden) isiKartuCuaca();
+    renderTentangCuaca();
+  }
+
+  function isiKartuCuaca() {
+    const d = cuacaData, c = d.sekarang, lok = d.lokasi || {};
+    const tempat = [lok.desa, lok.kotkab].filter(Boolean).join(', ');
+    const baris = [];
+    if (angka(c.kelembapan) != null) baris.push(['Kelembapan', Math.round(angka(c.kelembapan)) + '%']);
+    const ang = anginTeks(c.angin);
+    if (ang) baris.push(['Angin', ang]);
+    if (c.jarakPandang) baris.push(['Jarak pandang', String(c.jarakPandang)]);
+    const berikut = (Array.isArray(d.berikutnya) ? d.berikutnya : []).filter((x) => x && typeof x === 'object').slice(0, 6);
+    const tua = waktuDiambil(d);
+    $('#cuaca-kartu-isi').replaceChildren(
+      el('div', { class: 'cuaca-kepala' },
+        el('div', { class: 'cuaca-tempat' },
+          el('h2', { class: 'cuaca-judul', id: 'cuaca-judul', text: 'Cuaca' + (tempat ? ' di ' + tempat : '') }),
+          c.jamLokal ? el('p', { class: 'cuaca-kecil', text: 'Prakiraan pukul ' + jamTeks(c) + (lok.zonaWaktu === 'Asia/Jakarta' || !lok.zonaWaktu ? ' WIB' : '') }) : null),
+        el('button', { type: 'button', class: 'tombol-ikon cuaca-tutup', 'aria-label': 'Tutup detail cuaca', onclick: () => tutupCuaca(true) }, svgPakai('i-silang'))),
+      el('div', { class: 'cuaca-utama' },
+        ikonCuaca(c, 'cuaca-ikon-besar'),
+        el('div', null,
+          el('p', { class: 'cuaca-suhu', text: angka(c.suhu) == null ? '–' : Math.round(angka(c.suhu)) + '°C' }),
+          el('p', { class: 'cuaca-kondisi', text: c.kondisi || '' }))),
+      baris.length ? el('dl', { class: 'cuaca-rinci' }, baris.map(([k, v]) => el('div', null, el('dt', { text: k }), el('dd', { text: v })))) : null,
+      berikut.length ? el('div', { class: 'cuaca-prakiraan' },
+        el('h3', { class: 'cuaca-subjudul', text: 'Beberapa jam ke depan' }),
+        el('ul', { class: 'cuaca-jam' }, berikut.map((x) => el('li', null,
+          el('span', { class: 'cuaca-jam-waktu', text: jamTeks(x, c) }),
+          ikonCuaca(x, 'cuaca-jam-ikon'),
+          el('span', { class: 'cuaca-jam-suhu', text: suhuTeks(x.suhu) }),
+          el('span', { class: 'sr-only', text: x.kondisi || '' }))))) : null,
+      el('p', { class: 'cuaca-sumber' }, el('span', { text: 'Sumber: BMKG' }), tua ? el('span', { text: ' · ' + tua }) : null)
+    );
+  }
+
+  function posisiKartuCuaca() {
+    const k = $('#cuaca-kartu');
+    if (k.hidden) return;
+    const b = $('#beranda'), rb = b.getBoundingClientRect(), rc = $('#cuaca-chip').getBoundingClientRect();
+    k.style.top = Math.round(rc.bottom - rb.top + b.scrollTop + 8) + 'px';
+    k.style.right = Math.round(Math.max(12, rb.right - rc.right)) + 'px';
+  }
+  function bukaCuaca() {
+    if (!cuacaData) return;
+    isiKartuCuaca();
+    $('#cuaca-kartu').hidden = false;
+    $('#cuaca-chip').setAttribute('aria-expanded', 'true');
+    posisiKartuCuaca();
+    const t = $('#cuaca-kartu .cuaca-tutup');
+    if (t) t.focus({ preventScroll: true });
+  }
+  function tutupCuaca(kembalikanFokus) {
+    const k = $('#cuaca-kartu');
+    if (k.hidden) return;
+    k.hidden = true;
+    $('#cuaca-chip').setAttribute('aria-expanded', 'false');
+    if (kembalikanFokus && !$('#cuaca-chip').hidden) $('#cuaca-chip').focus({ preventScroll: true });
+  }
+  $('#cuaca-chip').addEventListener('click', () => ($('#cuaca-kartu').hidden ? bukaCuaca() : tutupCuaca(true)));
+  // Ketuk di luar kartu → tertutup. Ketukan itu tetap diteruskan ke header (interaksi animasi tetap jalan).
+  document.addEventListener('pointerdown', (e) => {
+    const k = $('#cuaca-kartu');
+    if (k.hidden || k.contains(e.target) || $('#cuaca-chip').contains(e.target)) return;
+    tutupCuaca(false);
+  }, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#cuaca-kartu').hidden) tutupCuaca(true); });
+  window.addEventListener('resize', posisiKartuCuaca);
+
+  /* ===================== Tentang portal ===================== */
+  function renderTentangCuaca() {
+    const lok = cuacaData && cuacaData.lokasi;
+    const tempat = lok ? [lok.desa, lok.kecamatan, lok.kotkab].filter(Boolean).join(', ') : '';
+    $('#tentang-cuaca-lokasi').textContent = tempat ? 'Lokasi prakiraan: ' + tempat + '.' : '';
+    $('#tentang-cuaca-lokasi').hidden = !tempat;
+  }
+  function bukaTentang() {
+    $('#tentang-versi').textContent = K.NAMA + ' · Versi ' + VERSI_KODE;
+    $('#tentang-alamat').textContent = location.host + location.pathname.replace(/[^/]*$/, '');
+    renderTentangCuaca();
+    $('#dlg-tentang').showModal();
+  }
+  ['#versi', '#sisi-tentang'].forEach((x) => $(x).addEventListener('click', bukaTentang));
+  $('#tentang-tutup').addEventListener('click', () => $('#dlg-tentang').close());
+
   /* ===================== Instal ke perangkat ===================== */
   const JEDA_AJAKAN = 2 * 3600 * 1000;   // ajakan instal paling sering sekali tiap 2 jam
   let promptPasang = null;
@@ -1362,7 +1571,7 @@
     document.title = K.NAMA;
     $$('.nama-portal').forEach((x) => { x.textContent = K.NAMA; });
     $('#merek-alamat').textContent = location.host;
-    $('#versi').textContent = 'Versi ' + VERSI_KODE;
+    $('#versi').textContent = 'Tentang portal · Versi ' + VERSI_KODE;
     bacaTautanAwal();
 
     const s = simpan.ambil(KUNCI.sesi);
@@ -1380,6 +1589,7 @@
       S.iklan = rapikanIklan(c.iklan);
       render();
       tampilPortal();
+      pakaiCuacaTersimpan();
     } else {
       tampilAwal('Memuat portal…');
     }
@@ -1389,10 +1599,11 @@
       bukaTautanAwal();
       jadwalkanPopup();
       muatLencana(true);   // setelah beranda tampil, tanpa menahan beranda
+      muatCuaca(false);    // begitu juga cuaca
     });
   }
 
-  $('#awal-coba').addEventListener('click', () => { tampilAwal('Memuat portal…'); muatData('awal').then((ok) => { if (ok) { tampilPortal(); bukaTautanAwal(); muatLencana(true); } }); });
+  $('#awal-coba').addEventListener('click', () => { tampilAwal('Memuat portal…'); muatData('awal').then((ok) => { if (ok) { tampilPortal(); bukaTautanAwal(); muatLencana(true); muatCuaca(false); } }); });
   $('#awal-lain').addEventListener('click', () => { bersihkanLokal(); tampilLogin(); });
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') {

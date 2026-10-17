@@ -71,6 +71,11 @@ window.Pemandangan = (() => {
   const intensitas = { pagi: 0, siang: 0, sore: 0, malam: 0 };
   const P = { daun: [], kilau: [], riak: [], kunang: [], lubang: [] };
   let awan = [], bintang = [], bintangJatuh = null, jedaBintangJatuh = 6;
+  // Cuaca (bagian 10 kontrak): nilai 0..1 yang dihaluskan menuju target
+  const NOL = { awan: 0, redup: 0, kabut: 0, asap: 0, hujan: 0, petir: 0 };
+  const cuaca = Object.assign({}, NOL);
+  let cuacaTarget = Object.assign({}, NOL), adaCuaca = false;
+  let tetes = [], kilat = null, jedaKilat = 6, jedaRiakHujan = 0;
   let angin = 0, kecAngin = 0;
   let px = 0, py = 0, pxT = 0, pyT = 0;
   const ptr = { x: 0, y: 0, ada: false, vx: 0, vy: 0, terakhir: 0, sentuhSelesai: 0, jenis: 'mouse' };
@@ -130,8 +135,8 @@ window.Pemandangan = (() => {
     }
     awan = [];
     const ra = acak(31);
-    for (let i = 0; i < 4; i++) {
-      awan.push({ x: ra() * W, y: H * (0.08 + ra() * 0.24), s: 0.7 + ra() * 0.6, v: 0, laju: 4 + ra() * 5, sprite: i % spriteAwan.length });
+    for (let i = 0; i < 8; i++) {
+      awan.push({ x: ra() * W, y: H * (0.05 + ra() * 0.3), s: 0.65 + ra() * 0.7, v: 0, laju: 4 + ra() * 5, sprite: i % 3 });
     }
   }
   // Tinggi permukaan bukit pada x (koordinat layar)
@@ -269,6 +274,7 @@ window.Pemandangan = (() => {
     geo.belakang.forEach((p) => pinus(cB, p.x, p.y, p.h, p.w));
 
     lapisan = { langit: kL, jauh: kJ, tengah: kT, danau: kD, bukit: kB };
+    bangunAwan();
   }
 
   function bangunSprite() {
@@ -281,12 +287,15 @@ window.Pemandangan = (() => {
     g.addColorStop(1, 'rgba(200,255,120,0)');
     c.fillStyle = g;
     c.fillRect(0, 0, 32, 32);
-    // Awan lembut
+  }
+  // Awan lembut. Warnanya digelapkan saat malam dan saat mendung.
+  function bangunAwan() {
+    const tint = campur([255, 255, 255], palet.gunung2, Math.min(0.85, 0.1 + palet.bintang * 0.55 + cuacaTarget.redup * 1.2));
     spriteAwan = [];
     const r = acak(5);
     for (let i = 0; i < 3; i++) {
       const k = kanvasBaru(180, 70), a = k.getContext('2d');
-      a.fillStyle = 'rgba(255,255,255,0.9)';
+      a.fillStyle = warna(tint, 0.92);
       for (let j = 0; j < 7; j++) {
         const x = 30 + j * 20 + r() * 10, y = 44 - Math.sin((j / 6) * Math.PI) * 16 - r() * 6, rad = 14 + Math.sin((j / 6) * Math.PI) * 12 + r() * 4;
         a.beginPath(); a.arc(x, y, rad, 0, Math.PI * 2); a.fill();
@@ -322,8 +331,9 @@ window.Pemandangan = (() => {
     const r = kepala.getBoundingClientRect();
     return [e.clientX - r.left, e.clientY - r.top];
   }
+  const diTombol = (e) => !!(e.target && e.target.closest && e.target.closest('button, a, input, [role="button"]'));
   function saatGerak(e) {
-    if (!rafId) return;
+    if (!rafId || diTombol(e)) return;
     const [x, y] = posisi(e);
     const kini = performance.now();
     const dt = Math.max(8, kini - (ptr.terakhir || kini - 16));
@@ -346,7 +356,7 @@ window.Pemandangan = (() => {
     }
   }
   function saatTekan(e) {
-    if (!rafId) return;
+    if (!rafId || diTombol(e)) return;
     ptr.ada = false;          // jangan hitung kecepatan dari posisi lama
     saatGerak(e);
     const [x, y] = posisi(e);
@@ -432,8 +442,40 @@ window.Pemandangan = (() => {
     });
     P.daun = P.daun.filter((d) => d.hidup > 0 && d.y < H + 12);
 
-    // Kunang-kunang: hanya ada saat malam
-    const nKunang = intensitas.malam > 0.05 ? batas(10) : 0;
+    // Cuaca dihaluskan supaya pergantian tidak mendadak
+    Object.keys(cuaca).forEach((k) => { cuaca[k] += (cuacaTarget[k] - cuaca[k]) * Math.min(1, dt * 0.6); });
+    // Hujan: titik hujan dibatasi menurut intensitas dan kualitas
+    const nTetes = cuaca.hujan > 0.02 ? batas(Math.round(90 * cuaca.hujan)) : 0;
+    while (tetes.length < nTetes) tetes.push({ x: Math.random() * (W + 80) - 40, y: Math.random() * H - H, l: 9 + Math.random() * 9, v: 430 + Math.random() * 220 });
+    if (tetes.length > nTetes) tetes.length = nTetes;
+    const miring = 0.16 + angin * 1.4;
+    tetes.forEach((t) => {
+      t.y += t.v * dt; t.x += t.v * miring * dt;
+      if (t.y > H + t.l) { t.y = -t.l - Math.random() * H * 0.3; t.x = Math.random() * (W + 80) - 40 - miring * H * 0.5; }
+    });
+    if (cuaca.hujan > 0.1 && geo) {          // riak kecil di danau karena hujan
+      jedaRiakHujan -= dt;
+      if (jedaRiakHujan <= 0) {
+        jedaRiakHujan = 0.9 - cuaca.hujan * 0.6;
+        const x = W * (0.32 + Math.random() * 0.44), y = geo.danauAtas + 6 + Math.random() * (geo.danauBawah - geo.danauAtas - 10);
+        if (y < yBukit(x) - 3) tambah(P.riak, { x, y, r: 1, hidup: 0.6 }, batas(6));
+      }
+    }
+    // Petir: kilat lembut sesekali (tidak berkedip cepat)
+    if (cuaca.petir > 0.5) {
+      jedaKilat -= dt;
+      if (jedaKilat <= 0 && !kilat) {
+        const x = W * (0.2 + Math.random() * 0.6), titik = [[x, 0]];
+        let y = 0, xx = x;
+        while (y < H * 0.5) { y += H * (0.06 + Math.random() * 0.06); xx += (Math.random() - 0.5) * W * 0.06; titik.push([xx, y]); }
+        kilat = { umur: 0, titik };
+        jedaKilat = 8 + Math.random() * 10;
+      }
+    }
+    if (kilat) { kilat.umur += dt; if (kilat.umur > 0.45) kilat = null; }
+
+    // Kunang-kunang: hanya ada saat malam, dikurangi saat hujan
+    const nKunang = intensitas.malam > 0.05 ? batas(cuaca.hujan > 0.1 ? 3 : 10) : 0;
     while (P.kunang.length < nKunang) {
       P.kunang.push({ x: Math.random() * W, y: H * (0.55 + Math.random() * 0.35), tx: 0, ty: 0, ganti: 0, k: 1 + Math.random() * 1.8,
         sudut: Math.random() * 6.28, jari: 16 + Math.random() * 30, w: (Math.random() < 0.5 ? -1 : 1) * (0.8 + Math.random() * 1.2),
@@ -482,10 +524,11 @@ window.Pemandangan = (() => {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // Bintang berkelip
-    if (palet.bintang > 0.03) {
+    const terang = palet.bintang * (1 - Math.min(1, cuaca.awan) * 0.85);
+    if (terang > 0.03) {
       ctx.fillStyle = '#FFFFFF';
       bintang.forEach((b) => {
-        ctx.globalAlpha = palet.bintang * (statis ? 0.8 : 0.55 + 0.45 * Math.sin(t * b.k + b.f));
+        ctx.globalAlpha = terang * (statis ? 0.8 : 0.55 + 0.45 * Math.sin(t * b.k + b.f));
         ctx.fillRect(b.x + gx(2), b.y, b.r, b.r);
       });
       ctx.globalAlpha = 1;
@@ -500,15 +543,35 @@ window.Pemandangan = (() => {
       ctx.strokeStyle = g; ctx.lineWidth = 1.4;
       ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 60, y - 30); ctx.stroke();
     }
-    // Awan
-    const aAwan = intensitas.siang * 0.85 + intensitas.pagi * 0.35 + intensitas.sore * 0.25;
+    // Awan: tanpa data cuaca mengikuti suasana; dengan data cuaca mengikuti tutupan awan
+    const aSuasana = intensitas.siang * 0.85 + intensitas.pagi * 0.35 + intensitas.sore * 0.25;
+    const jumlahAwan = adaCuaca ? 1.5 + cuaca.awan * 6.5 : 4;
+    const aAwan = adaCuaca ? 0.35 + cuaca.awan * 0.6 : aSuasana;
     if (aAwan > 0.02 && spriteAwan.length) {
-      ctx.globalAlpha = aAwan;
-      awan.forEach((a) => ctx.drawImage(spriteAwan[a.sprite], a.x + gx(3), a.y, 180 * a.s, 70 * a.s));
+      awan.forEach((a, i) => {
+        const tampak = Math.min(1, Math.max(0, jumlahAwan - i));
+        if (tampak <= 0) return;
+        ctx.globalAlpha = aAwan * tampak;
+        ctx.drawImage(spriteAwan[a.sprite], a.x + gx(3), a.y, 180 * a.s, 70 * a.s);
+      });
       ctx.globalAlpha = 1;
     }
+
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     gambarLapisan(lapisan.jauh, gx(5), gy(3));
+    // Kabut / udara kabur / asap menutupi gunung jauh
+    const warnaKabut = cuaca.asap > 0.5 ? [198, 182, 164] : campur([236, 239, 243], palet.langit2, 0.3);
+    if (cuaca.kabut > 0.02) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const atas = H * 0.15, bawah = geo.dasar + H * 0.06;
+      const gk = ctx.createLinearGradient(0, atas, 0, bawah);
+      gk.addColorStop(0, warna(warnaKabut, 0));
+      gk.addColorStop(0.5, warna(warnaKabut, 0.82 * cuaca.kabut));
+      gk.addColorStop(1, warna(warnaKabut, 0.6 * cuaca.kabut));
+      ctx.fillStyle = gk;
+      ctx.fillRect(0, atas, W, bawah - atas);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
     gambarLapisan(lapisan.tengah, gx(10), gy(5));
     gambarLapisan(lapisan.danau, gx(14), gy(6));
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -564,7 +627,40 @@ window.Pemandangan = (() => {
       ctx.drawImage(kabutKanvas, 0, 0, W, H);
       ctx.globalAlpha = 1;
     }
+    // Mendung: satu lapisan gradasi (langit paling redup, tanah sedikit) supaya ringan
+    if (cuaca.redup > 0.01) {
+      const gr = ctx.createLinearGradient(0, 0, 0, H);
+      gr.addColorStop(0, warna(campur(palet.gunung2, [70, 78, 92], 0.55), cuaca.redup * 0.95));
+      gr.addColorStop(geo.dasar / H, warna([46, 54, 68], cuaca.redup * 0.5));
+      gr.addColorStop(1, warna([30, 38, 52], cuaca.redup * 0.3));
+      ctx.fillStyle = gr;
+      ctx.fillRect(0, 0, W, H);
+    }
     if (statis) return;
+
+    // Hujan
+    if (tetes.length) {
+      ctx.strokeStyle = 'rgba(226,236,250,' + (0.32 + 0.18 * cuaca.hujan) + ')';
+      ctx.lineWidth = 1;
+      const m = 0.16 + angin * 1.4;
+      ctx.beginPath();
+      tetes.forEach((tt) => { ctx.moveTo(tt.x, tt.y); ctx.lineTo(tt.x - tt.l * m, tt.y - tt.l); });
+      ctx.stroke();
+    }
+    // Kilat: cahaya lembut, maks. dua kali berpendar per kejadian
+    if (kilat) {
+      const u = kilat.umur;
+      const a = u < 0.08 ? u / 0.08 * 0.32 : u < 0.16 ? 0.32 - (u - 0.08) / 0.08 * 0.24 : u < 0.24 ? 0.08 + (u - 0.16) / 0.08 * 0.12 : Math.max(0, 0.2 - (u - 0.24) / 0.21 * 0.2);
+      ctx.fillStyle = 'rgba(235,240,255,' + a + ')';
+      ctx.fillRect(0, 0, W, H);
+      if (u < 0.2) {
+        ctx.strokeStyle = 'rgba(255,255,255,' + (0.85 * (1 - u / 0.2)) + ')';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        kilat.titik.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+        ctx.stroke();
+      }
+    }
 
     // Embun berkilau
     if (P.kilau.length) {
@@ -678,5 +774,36 @@ window.Pemandangan = (() => {
   // Dipanggil portal: true saat beranda tampil, false saat aplikasi dibuka.
   function aktif(ya) { diBeranda = !!ya; aturJalan(); }
 
-  return { pasang, aktif, suasana, _status: () => ({ jalan: !!rafId, kualitas, dpr, rataFrame: Math.round(rataFrame * 10) / 10, partikel: Object.fromEntries(Object.entries(P).map(([k, v]) => [k, v.length])), suasana: suasanaKini }) };
+  // Kondisi BMKG → suasana cuaca di pemandangan. null bila tidak dikenal.
+  function cuacaDari(s) {
+    if (!s) return null;
+    const k = String(s.kondisi || '').toLowerCase();
+    const kode = s.kode == null ? NaN : Number(s.kode);
+    const ada = (x) => k.indexOf(x) >= 0;
+    const t = Object.assign({}, NOL);
+    if (ada('petir') || kode === 95 || kode === 97) { t.hujan = 0.75; t.petir = 1; t.awan = 0.95; t.redup = 0.32; }
+    else if (ada('hujan lebat') || kode === 63) { t.hujan = 1; t.awan = 0.95; t.redup = 0.3; }
+    else if (ada('hujan sedang') || kode === 61) { t.hujan = 0.6; t.awan = 0.9; t.redup = 0.24; }
+    else if (ada('hujan ringan') || kode === 60) { t.hujan = 0.3; t.awan = 0.8; t.redup = 0.18; }
+    else if (ada('hujan') || kode === 80) { t.hujan = 0.45; t.awan = 0.85; t.redup = 0.2; }
+    else if (ada('asap') || kode === 10) { t.kabut = 0.8; t.asap = 1; t.awan = 0.3; t.redup = 0.12; }
+    else if (ada('kabut') || ada('kabur') || kode === 45 || kode === 5) { t.kabut = 0.85; t.awan = 0.3; t.redup = 0.1; }
+    else if (ada('berawan tebal') || kode === 4) { t.awan = 1; t.redup = 0.26; }
+    else if (ada('cerah berawan') || kode === 1 || kode === 2) { t.awan = 0.35; }
+    else if (ada('berawan') || kode === 3) { t.awan = 0.75; t.redup = 0.14; }
+    else if (ada('cerah') || kode === 0) { t.awan = 0.1; }
+    else return null;
+    return t;
+  }
+  // Dipanggil portal dengan data "sekarang" dari aksi cuaca, atau null (header tanpa cuaca).
+  function aturCuaca(sekarang) {
+    const t = cuacaDari(sekarang);
+    adaCuaca = !!t;
+    cuacaTarget = t || Object.assign({}, NOL);
+    if (!rafId) Object.assign(cuaca, cuacaTarget);   // tampilan diam: langsung pakai nilai akhir
+    if (ctx && palet) bangunAwan();
+    if (!rafId && W && lapisan) gambar(0, true);
+  }
+
+  return { pasang, aktif, suasana, aturCuaca, cuacaDari, _status: () => ({ jalan: !!rafId, kualitas, dpr, rataFrame: Math.round(rataFrame * 10) / 10, partikel: Object.assign(Object.fromEntries(Object.entries(P).map(([k, v]) => [k, v.length])), { hujan: tetes.length }), suasana: suasanaKini, cuaca: Object.fromEntries(Object.entries(cuaca).map(([k, v]) => [k, Math.round(v * 100) / 100])) }) };
 })();
