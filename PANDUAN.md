@@ -1,6 +1,6 @@
 # Portal Sahabat PPDS — Panduan singkat
 
-Portal ini mengikuti **KONTRAK_INTEGRASI.md versi 1.5** (bagian 5–10). Semua data (aplikasi, peran, pengumuman) diambil dari Hub, jadi file di sini jarang perlu diubah.
+Portal ini mengikuti **KONTRAK_INTEGRASI.md versi 1.6** (bagian 5–11). Semua data (aplikasi, peran, pengumuman) diambil dari Hub, jadi file di sini jarang perlu diubah.
 
 ## File
 | File | Isi |
@@ -48,6 +48,8 @@ Repo ini publik. **Jangan menaruh kunci, PIN, atau rahasia apa pun di file mana 
 - **Tautan luar:** item dari Hub yang `tabBaru: true` (tautan seperti YouTube, dan Hub) selalu dibuka di tab baru dengan tanda ↗, tanpa tiket dan tanpa layar loading. Link `?buka=<ID tautan>` hanya menampilkan beranda.
 - **Cuaca BMKG:** diminta ke Hub setelah beranda tampil, paling sering tiap 30 menit. Tombol kecil di pojok header (ikon + suhu) membuka kartu detail. Bila Hub tidak memberi data cuaca, header tampil tanpa cuaca. Pemandangan ikut berubah: awan, mendung, kabut/asap, hujan, dan kilat.
 - **Tentang portal:** tautan di bawah beranda dan menu Tentang di sidebar, termasuk keterangan "Data cuaca: BMKG".
+
+- **Peringkat:** kartu satu baris di beranda (mis. "🏆 Go Get It! · Peringkat Anda #12"). Ketuk untuk membuka 5 teratas, ketuk lagi untuk menutup. Ketuk nama aplikasi untuk membukanya. Diminta ke Hub setelah beranda tampil, paling sering tiap 5 menit. Bila Hub tidak memberi data, kartu disembunyikan.
 
 ## Mengubah portal
 Edit file di GitHub (ikon pensil → Commit). Bila mengubah `index.html`, `style.css`, `app.js`, atau `config.js`, naikkan juga angka di `sw.js` (mis. `portal-v3` → `portal-v4`).

@@ -763,3 +763,58 @@ button.versi { border: 0; background: none; padding: 8px 4px; color: var(--redup
   .nama-jalan.berjalan { -webkit-mask-image: none; mask-image: none; }
   .nama-jalan.berjalan > .jalan-isi, .nama-jalan > .jalan-isi { animation: none; display: block; white-space: normal; overflow-wrap: anywhere; }
 }
+
+/* ===================== Peringkat (bagian 11) ===================== */
+.papan-peringkat { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+.peringkat {
+  border: 1px solid var(--garis); border-radius: 14px; background: var(--permukaan);
+  overflow: hidden;
+}
+.peringkat-baris {
+  display: flex; align-items: center; gap: 6px; min-height: 50px; padding: 0 4px 0 14px;
+  cursor: pointer;
+}
+.peringkat-piala { font-size: 18px; line-height: 1; }
+.peringkat-app {
+  flex-shrink: 1; min-width: 0; max-width: 45%; padding: 8px 2px; border: 0; background: none;
+  color: var(--teks); font-size: 14px; font-weight: 700; text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-decoration: underline; text-decoration-color: var(--garis-isian); text-underline-offset: 3px;
+}
+.peringkat-app:hover { text-decoration-color: currentColor; }
+.peringkat-titik { color: var(--redup); }
+.peringkat-alih {
+  flex: 1; min-width: 0; min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 0 10px 0 2px; border: 0; background: none; color: var(--redup); font-size: 14px; text-align: left;
+}
+.peringkat-saya { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.peringkat-saya strong { color: var(--teks); font-weight: 700; }
+.peringkat-panah { width: 18px; height: 18px; flex-shrink: 0; transform: rotate(-90deg); transition: transform .18s ease; }
+.peringkat.terbuka .peringkat-panah { transform: rotate(90deg); }
+.peringkat-panel { padding: 2px 14px 14px; border-top: 1px solid var(--garis); }
+.peringkat-daftar { list-style: none; margin: 0; padding: 0; }
+.peringkat-daftar li { display: flex; align-items: center; gap: 10px; min-height: 40px; border-bottom: 1px solid var(--garis); font-size: 14px; }
+.peringkat-daftar li:last-child { border-bottom: 0; }
+.peringkat-no {
+  width: 24px; height: 24px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: var(--permukaan-2); color: var(--redup); font-size: 12px; font-weight: 700;
+}
+.peringkat-daftar li:nth-child(1) .peringkat-no { background: #F2D27A; color: #5A4207; }
+.peringkat-daftar li:nth-child(2) .peringkat-no { background: #D9DEE4; color: #3B4652; }
+.peringkat-daftar li:nth-child(3) .peringkat-no { background: #E8B98F; color: #5C3714; }
+.peringkat-nama { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.peringkat-skor { font-weight: 700; font-variant-numeric: tabular-nums; }
+.peringkat-daftar li.saya { margin: 0 -8px; padding: 0 8px; border-radius: 10px; background: var(--info-bg); border-bottom-color: transparent; }
+.peringkat-anda { padding: 1px 7px; border-radius: 6px; background: var(--aksen); color: #FFFFFF; font-size: 11px; font-weight: 700; }
+.peringkat-kosong, .peringkat-posisi { margin: 10px 0 0; font-size: 14px; color: var(--redup); line-height: 1.5; }
+.peringkat-posisi strong { color: var(--teks); }
+.peringkat-ajak { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-top: 12px; font-size: 14px; color: var(--redup); }
+.peringkat-mulai { min-height: 40px; padding: 0 16px; font-size: 14px; }
+@media (min-width: 900px) { .papan-peringkat { max-width: 560px; } }
+@media (prefers-reduced-motion: reduce) { .peringkat-panah { transition: none; } }
+.peringkat-sisa { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.peringkat-ajakan {
+  min-height: 34px; padding: 0 12px; border: 0; border-radius: 999px;
+  background: var(--info-bg); color: var(--info); font-size: 13px; font-weight: 700; white-space: nowrap;
+}
+.peringkat-alih-ikon { flex: 0 0 44px; justify-content: center; padding: 0; }

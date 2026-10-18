@@ -17,10 +17,11 @@
     iklanPopup: 'portal.iklanPopup',     // { idSlot: waktu (ms) pop-up iklan terakhir tampil }
     sering: 'portal.seringDibuka',       // { idAplikasi: jumlah dibuka di perangkat ini }
     tampilan: 'portal.tampilanApp',      // 'grid' atau 'list'
-    cuaca: 'portal.cuaca'                // { waktu (ms), data } cuaca terakhir dari Hub
+    cuaca: 'portal.cuaca',               // { waktu (ms), data } cuaca terakhir dari Hub
+    peringkat: 'portal.peringkat'        // { waktu (ms), data } peringkat terakhir dari Hub (bagian 11)
   };
   const ID_HUB = 'hub';
-  const VERSI_KODE = '2.6.0';
+  const VERSI_KODE = '2.7.0';
 
   /* ===================== Utilitas ===================== */
   const $ = (s) => document.querySelector(s);
@@ -370,6 +371,7 @@
     jadwalkanPopup();
     muatLencana(true);
     muatCuaca(true);
+    muatPeringkat(true);
   }
 
   /* ===================== Paket portal ===================== */
@@ -409,6 +411,9 @@
     aturMode(false);
     $('#layar-portal').classList.remove('ringkas', 'sisi-buka');
     cuacaData = null; cuacaTerakhir = 0;
+    peringkatData = {}; peringkatTerakhir = 0; peringkatTerbuka.clear();
+    simpan.hapus(KUNCI.peringkat);
+    renderPeringkat();
     simpan.hapus(KUNCI.cuaca);
     renderCuaca();
   }
@@ -455,6 +460,7 @@
     renderDaftarApp();
     renderPengumumanRingkas();
     renderIklan();
+    if (typeof renderPeringkat === 'function') renderPeringkat();
   }
 
   /* ===================== Daftar aplikasi: cari, urutan, tampilan ===================== */
@@ -950,6 +956,7 @@
     document.title = K.NAMA;
     perbaruiSalam();
     renderDaftarApp();        // aplikasi yang baru dipakai naik ke atas
+    muatPeringkat(false);     // paling sering sekali per 5 menit
     tandaiAktif();
     ukurUlangBingkai();
     renderIklan();            // banner/tombol: iklan dipilih acak lagi setiap kali tampil
@@ -1117,6 +1124,7 @@
     ukurUlangBingkai();
     if (Date.now() - S.terakhirMuat > 30000) muatData('kembali');
     muatCuaca(false);
+    if (!S.aktif) muatPeringkat(false);
     jadwalkanPopup();
   }
   document.addEventListener('visibilitychange', saatKembali);
@@ -1563,6 +1571,112 @@
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#cuaca-kartu').hidden) tutupCuaca(true); });
   window.addEventListener('resize', posisiKartuCuaca);
 
+  /* ===================== Peringkat (bagian 11) ===================== */
+  const PERINGKAT_SELANG = 5 * 60000;
+  let peringkatData = {}, peringkatTerakhir = 0, sedangPeringkat = false;
+  const peringkatTerbuka = new Set();
+
+  function rapikanPeringkat(x) {
+    const hasil = {};
+    if (!x || typeof x !== 'object') return hasil;
+    Object.keys(x).forEach((id) => {
+      const d = x[id];
+      if (!d || typeof d !== 'object') return;
+      const top5 = (Array.isArray(d.top5) ? d.top5 : [])
+        .filter((r) => r && typeof r.nama === 'string' && r.nama.trim() && isFinite(Number(r.skor)))
+        .slice(0, 5).map((r) => ({ nama: r.nama.trim().slice(0, 80), skor: Number(r.skor) }));
+      const s = d.saya;
+      const saya = s && Number(s.peringkat) >= 1 ? { peringkat: Math.floor(Number(s.peringkat)), skor: Number(s.skor) || 0 } : null;
+      hasil[id] = { top5, saya };
+    });
+    return hasil;
+  }
+  async function muatPeringkat(paksa) {
+    if (!S.sesi || sedangPeringkat || document.visibilityState === 'hidden') return;
+    if (!paksa && Date.now() - peringkatTerakhir < PERINGKAT_SELANG) return;
+    sedangPeringkat = true;
+    peringkatTerakhir = Date.now();
+    const sesi = S.sesi;
+    const r = await hub('peringkat', { sesi });
+    sedangPeringkat = false;
+    if (S.sesi !== sesi) return;
+    // ok:false apa pun: sembunyikan peringkat, tanpa pesan dan tanpa keluar dari portal.
+    peringkatData = r.ok ? rapikanPeringkat(r.peringkat) : {};
+    if (Object.keys(peringkatData).length) simpan.taruh(KUNCI.peringkat, { waktu: Date.now(), data: peringkatData });
+    else simpan.hapus(KUNCI.peringkat);
+    renderPeringkat();
+  }
+  function pakaiPeringkatTersimpan() {
+    const c = simpan.ambil(KUNCI.peringkat);
+    if (c && c.data && Date.now() - c.waktu < 24 * 3600000) {
+      peringkatData = rapikanPeringkat(c.data);
+      renderPeringkat();
+    }
+  }
+  const fmtSkor = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 });
+
+  function kartuPeringkat(app, d) {
+    const buka = peringkatTerbuka.has(app.id);
+    const idPanel = 'peringkat-panel-' + app.id;
+    const s = d.saya;
+    const kartu = el('section', { class: 'peringkat' + (buka ? ' terbuka' : ''), 'data-peringkat': app.id, 'aria-label': 'Peringkat ' + app.nama });
+    const alih = () => {
+      if (peringkatTerbuka.has(app.id)) peringkatTerbuka.delete(app.id); else peringkatTerbuka.add(app.id);
+      renderPeringkat();
+      const t = document.querySelector('[data-peringkat="' + app.id + '"] .peringkat-alih');
+      if (t) t.focus({ preventScroll: true });
+    };
+    const baris = el('div', { class: 'peringkat-baris' },
+      el('span', { class: 'peringkat-piala', 'aria-hidden': 'true', text: '🏆' }),
+      el('button', { type: 'button', class: 'peringkat-app', title: 'Buka ' + app.nama, onclick: () => bukaApp(app.id) }, app.nama),
+      el('span', { class: 'peringkat-titik', 'aria-hidden': 'true', text: '·' }),
+      s
+        ? el('button', { type: 'button', class: 'peringkat-alih', 'aria-expanded': String(buka), 'aria-controls': idPanel, onclick: alih },
+            el('span', { class: 'peringkat-saya' }, 'Peringkat Anda ', el('strong', { text: '#' + s.peringkat })),
+            svgPakai('i-kiri', 'peringkat-panah'))
+        : el('span', { class: 'peringkat-sisa' },
+            el('button', { type: 'button', class: 'peringkat-ajakan', onclick: () => bukaApp(app.id) }, 'Mulai berlatih'),
+            el('button', { type: 'button', class: 'peringkat-alih peringkat-alih-ikon', 'aria-expanded': String(buka), 'aria-controls': idPanel,
+              'aria-label': buka ? 'Tutup 5 teratas' : 'Lihat 5 teratas', onclick: alih }, svgPakai('i-kiri', 'peringkat-panah')))
+    );
+    // Ketuk di bagian baris yang kosong juga membuka/menutup
+    baris.addEventListener('click', (e) => { if (!e.target.closest('button')) alih(); });
+    kartu.append(baris);
+
+    const panel = el('div', { class: 'peringkat-panel', id: idPanel, hidden: !buka });
+    if (d.top5.length) {
+      panel.append(el('ol', { class: 'peringkat-daftar' }, d.top5.map((r, i) => {
+        const diriSendiri = s && s.peringkat === i + 1;
+        return el('li', { class: diriSendiri ? 'saya' : null },
+          el('span', { class: 'peringkat-no', text: String(i + 1) }),
+          el('span', { class: 'peringkat-nama', text: r.nama }),
+          diriSendiri ? el('span', { class: 'peringkat-anda', text: 'Anda' }) : null,
+          el('span', { class: 'peringkat-skor', text: fmtSkor.format(r.skor) }));
+      })));
+    } else {
+      panel.append(el('p', { class: 'peringkat-kosong', text: 'Belum ada skor. Jadilah yang pertama.' }));
+    }
+    if (s && s.peringkat > 5) {
+      panel.append(el('p', { class: 'peringkat-posisi' },
+        'Posisi Anda: ', el('strong', { text: '#' + s.peringkat }), ' dengan skor ', el('strong', { text: fmtSkor.format(s.skor) })));
+    }
+    if (!s) {
+      panel.append(el('div', { class: 'peringkat-ajak' },
+        el('span', { text: d.top5.length ? 'Anda belum punya skor.' : '' }),
+        el('button', { type: 'button', class: 'tombol utama peringkat-mulai', onclick: () => bukaApp(app.id) }, 'Mulai berlatih')));
+    }
+    kartu.append(panel);
+    return kartu;
+  }
+
+  function renderPeringkat() {
+    const w = $('#papan-peringkat');
+    // Hanya aplikasi yang ada di paket portal (bukan tautan/Hub), menurut urutan aplikasi.
+    const daftar = S.aplikasi.filter((a) => peringkatData[a.id] && !diTabBaru(a));
+    w.replaceChildren(...daftar.map((a) => kartuPeringkat(a, peringkatData[a.id])));
+    w.hidden = !daftar.length;
+  }
+
   /* ===================== Tentang portal ===================== */
   function renderTentangCuaca() {
     const lok = cuacaData && cuacaData.lokasi;
@@ -1670,6 +1784,7 @@
       render();
       tampilPortal();
       pakaiCuacaTersimpan();
+      pakaiPeringkatTersimpan();
     } else {
       tampilAwal('Memuat portal…');
     }
@@ -1680,10 +1795,11 @@
       jadwalkanPopup();
       muatLencana(true);   // setelah beranda tampil, tanpa menahan beranda
       muatCuaca(false);    // begitu juga cuaca
+      muatPeringkat(false); // dan peringkat
     });
   }
 
-  $('#awal-coba').addEventListener('click', () => { tampilAwal('Memuat portal…'); muatData('awal').then((ok) => { if (ok) { tampilPortal(); bukaTautanAwal(); muatLencana(true); muatCuaca(false); } }); });
+  $('#awal-coba').addEventListener('click', () => { tampilAwal('Memuat portal…'); muatData('awal').then((ok) => { if (ok) { tampilPortal(); bukaTautanAwal(); muatLencana(true); muatCuaca(false); muatPeringkat(false); } }); });
   $('#awal-lain').addEventListener('click', () => { bersihkanLokal(); tampilLogin(); });
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
