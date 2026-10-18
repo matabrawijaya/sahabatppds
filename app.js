@@ -21,7 +21,7 @@
     peringkat: 'portal.peringkat'        // { waktu (ms), data } peringkat terakhir dari Hub (bagian 11)
   };
   const ID_HUB = 'hub';
-  const VERSI_KODE = '2.7.0';
+  const VERSI_KODE = '2.8.0';
 
   /* ===================== Utilitas ===================== */
   const $ = (s) => document.querySelector(s);
@@ -1576,18 +1576,35 @@
   let peringkatData = {}, peringkatTerakhir = 0, sedangPeringkat = false;
   const peringkatTerbuka = new Set();
 
+  // Baris top5 dan saya disaring sama untuk papan biasa dan papan event (bagian 11.3, 11.5).
+  function rapikanTop5(a) {
+    return (Array.isArray(a) ? a : [])
+      .filter((r) => r && typeof r.nama === 'string' && r.nama.trim() && r.skor !== null && r.skor !== '' && isFinite(Number(r.skor)))
+      .slice(0, 5).map((r) => ({ nama: r.nama.trim().slice(0, 80), skor: Number(r.skor) }));
+  }
+  function rapikanSaya(s) {
+    return s && Number(s.peringkat) >= 1 ? { peringkat: Math.floor(Number(s.peringkat)), skor: Number(s.skor) || 0 } : null;
+  }
+  // (1.7) Event: dibuang bila tanpa nama, top5 bukan daftar, selesai bukan angka, atau sudah lewat.
+  function rapikanEvent(ev) {
+    if (!ev || typeof ev !== 'object' || typeof ev.nama !== 'string' || !ev.nama.trim() || !Array.isArray(ev.top5)) return null;
+    let sl = Number(ev.selesai);
+    if (!isFinite(sl) || sl <= 0) return null;
+    if (sl > 1e11) sl = sl / 1000;                       // milidetik → detik
+    sl = Math.floor(sl);
+    if (sl * 1000 <= Date.now()) return null;
+    return { nama: ev.nama.trim().slice(0, 80), selesai: sl, top5: rapikanTop5(ev.top5), saya: rapikanSaya(ev.saya) };
+  }
   function rapikanPeringkat(x) {
     const hasil = {};
     if (!x || typeof x !== 'object') return hasil;
     Object.keys(x).forEach((id) => {
       const d = x[id];
       if (!d || typeof d !== 'object') return;
-      const top5 = (Array.isArray(d.top5) ? d.top5 : [])
-        .filter((r) => r && typeof r.nama === 'string' && r.nama.trim() && isFinite(Number(r.skor)))
-        .slice(0, 5).map((r) => ({ nama: r.nama.trim().slice(0, 80), skor: Number(r.skor) }));
-      const s = d.saya;
-      const saya = s && Number(s.peringkat) >= 1 ? { peringkat: Math.floor(Number(s.peringkat)), skor: Number(s.skor) || 0 } : null;
-      hasil[id] = { top5, saya };
+      const v = { top5: rapikanTop5(d.top5), saya: rapikanSaya(d.saya) };
+      const ev = rapikanEvent(d.event);
+      if (ev) v.event = ev;
+      hasil[id] = v;
     });
     return hasil;
   }
@@ -1609,43 +1626,45 @@
   function pakaiPeringkatTersimpan() {
     const c = simpan.ambil(KUNCI.peringkat);
     if (c && c.data && Date.now() - c.waktu < 24 * 3600000) {
-      peringkatData = rapikanPeringkat(c.data);
+      peringkatData = rapikanPeringkat(c.data);   // event yang sudah selesai ikut terbuang di sini
       renderPeringkat();
     }
   }
   const fmtSkor = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 });
+  const fmtTglWIB = new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', weekday: 'short', day: 'numeric', month: 'short' });
+  const fmtJamWIB = new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', hour12: false });
+  function waktuWIB(detik) {
+    const t = new Date(detik * 1000);
+    return fmtTglWIB.format(t) + ', ' + fmtJamWIB.format(t).replace(':', '.') + ' WIB';
+  }
 
-  function kartuPeringkat(app, d) {
-    const buka = peringkatTerbuka.has(app.id);
-    const idPanel = 'peringkat-panel-' + app.id;
-    const s = d.saya;
-    const kartu = el('section', { class: 'peringkat' + (buka ? ' terbuka' : ''), 'data-peringkat': app.id, 'aria-label': 'Peringkat ' + app.nama });
+  // Satu kartu ringkas yang bisa dibuka/ditutup. kunci membedakan papan biasa dan papan event.
+  function kartuRingkas(o) {
+    const buka = peringkatTerbuka.has(o.kunci);
+    const idPanel = 'peringkat-panel-' + o.kunci.replace(/[^a-z0-9_-]/gi, '-');
+    const s = o.saya;
+    const kartu = el('section', { class: 'peringkat' + (o.event ? ' peringkat-event' : '') + (buka ? ' terbuka' : ''),
+      'data-peringkat': o.kunci, 'aria-label': o.label });
     const alih = () => {
-      if (peringkatTerbuka.has(app.id)) peringkatTerbuka.delete(app.id); else peringkatTerbuka.add(app.id);
+      if (peringkatTerbuka.has(o.kunci)) peringkatTerbuka.delete(o.kunci); else peringkatTerbuka.add(o.kunci);
       renderPeringkat();
-      const t = document.querySelector('[data-peringkat="' + app.id + '"] .peringkat-alih');
+      const t = document.querySelector('[data-peringkat="' + o.kunci + '"] .peringkat-alih');
       if (t) t.focus({ preventScroll: true });
     };
+    const tombolAlih = (isi, ikonSaja) => el('button', { type: 'button', class: 'peringkat-alih' + (ikonSaja ? ' peringkat-alih-ikon' : ''),
+      'aria-expanded': String(buka), 'aria-controls': idPanel,
+      'aria-label': ikonSaja ? (buka ? 'Tutup 5 teratas' : 'Lihat 5 teratas') : null, onclick: alih },
+      isi, svgPakai('i-kiri', 'peringkat-panah'));
     const baris = el('div', { class: 'peringkat-baris' },
       el('span', { class: 'peringkat-piala', 'aria-hidden': 'true', text: '🏆' }),
-      el('button', { type: 'button', class: 'peringkat-app', title: 'Buka ' + app.nama, onclick: () => bukaApp(app.id) }, app.nama),
-      el('span', { class: 'peringkat-titik', 'aria-hidden': 'true', text: '·' }),
-      s
-        ? el('button', { type: 'button', class: 'peringkat-alih', 'aria-expanded': String(buka), 'aria-controls': idPanel, onclick: alih },
-            el('span', { class: 'peringkat-saya' }, 'Peringkat Anda ', el('strong', { text: '#' + s.peringkat })),
-            svgPakai('i-kiri', 'peringkat-panah'))
-        : el('span', { class: 'peringkat-sisa' },
-            el('button', { type: 'button', class: 'peringkat-ajakan', onclick: () => bukaApp(app.id) }, 'Mulai berlatih'),
-            el('button', { type: 'button', class: 'peringkat-alih peringkat-alih-ikon', 'aria-expanded': String(buka), 'aria-controls': idPanel,
-              'aria-label': buka ? 'Tutup 5 teratas' : 'Lihat 5 teratas', onclick: alih }, svgPakai('i-kiri', 'peringkat-panah')))
-    );
+      ...o.isiBaris(tombolAlih));
     // Ketuk di bagian baris yang kosong juga membuka/menutup
     baris.addEventListener('click', (e) => { if (!e.target.closest('button')) alih(); });
     kartu.append(baris);
 
     const panel = el('div', { class: 'peringkat-panel', id: idPanel, hidden: !buka });
-    if (d.top5.length) {
-      panel.append(el('ol', { class: 'peringkat-daftar' }, d.top5.map((r, i) => {
+    if (o.top5.length) {
+      panel.append(el('ol', { class: 'peringkat-daftar' }, o.top5.map((r, i) => {
         const diriSendiri = s && s.peringkat === i + 1;
         return el('li', { class: diriSendiri ? 'saya' : null },
           el('span', { class: 'peringkat-no', text: String(i + 1) }),
@@ -1654,7 +1673,7 @@
           el('span', { class: 'peringkat-skor', text: fmtSkor.format(r.skor) }));
       })));
     } else {
-      panel.append(el('p', { class: 'peringkat-kosong', text: 'Belum ada skor. Jadilah yang pertama.' }));
+      panel.append(el('p', { class: 'peringkat-kosong', text: o.teksKosong }));
     }
     if (s && s.peringkat > 5) {
       panel.append(el('p', { class: 'peringkat-posisi' },
@@ -1662,19 +1681,74 @@
     }
     if (!s) {
       panel.append(el('div', { class: 'peringkat-ajak' },
-        el('span', { text: d.top5.length ? 'Anda belum punya skor.' : '' }),
-        el('button', { type: 'button', class: 'tombol utama peringkat-mulai', onclick: () => bukaApp(app.id) }, 'Mulai berlatih')));
+        el('span', { text: o.teksBelum(o.top5.length) }),
+        el('button', { type: 'button', class: 'tombol utama peringkat-mulai', onclick: o.bukaApp }, o.teksAjak)));
     }
     kartu.append(panel);
     return kartu;
   }
 
+  function kartuPeringkat(app, d) {
+    const s = d.saya, bukaIni = () => bukaApp(app.id);
+    return kartuRingkas({
+      kunci: app.id, label: 'Peringkat ' + app.nama, top5: d.top5, saya: s, bukaApp: bukaIni,
+      teksKosong: 'Belum ada skor. Jadilah yang pertama.',
+      teksBelum: (ada) => ada ? 'Anda belum punya skor.' : '', teksAjak: 'Mulai berlatih',
+      isiBaris: (tombolAlih) => [
+        el('button', { type: 'button', class: 'peringkat-app', title: 'Buka ' + app.nama, onclick: bukaIni }, app.nama),
+        el('span', { class: 'peringkat-titik', 'aria-hidden': 'true', text: '·' }),
+        s ? tombolAlih(el('span', { class: 'peringkat-saya' }, 'Peringkat Anda ', el('strong', { text: '#' + s.peringkat })))
+          : el('span', { class: 'peringkat-sisa' },
+              el('button', { type: 'button', class: 'peringkat-ajakan', onclick: bukaIni }, 'Mulai berlatih'),
+              tombolAlih(null, true))
+      ]
+    });
+  }
+
+  // (1.7) Papan event: kartu kecil di bawah papan aplikasi itu (bagian 11.5).
+  function kartuEvent(app, ev) {
+    const s = ev.saya, bukaIni = () => bukaApp(app.id);
+    return kartuRingkas({
+      event: true, kunci: 'event-' + app.id, label: 'Event ' + ev.nama + ' di ' + app.nama,
+      top5: ev.top5, saya: s, bukaApp: bukaIni,
+      teksKosong: 'Belum ada peserta yang memenuhi syarat.',
+      teksBelum: () => 'Anda belum memenuhi syarat.', teksAjak: 'Ikut event',
+      isiBaris: (tombolAlih) => [
+        el('div', { class: 'peringkat-event-isi' },
+          el('button', { type: 'button', class: 'peringkat-app peringkat-event-nama', title: 'Buka ' + app.nama, onclick: bukaIni }, ev.nama),
+          tombolAlih(el('span', { class: 'peringkat-event-ket' },
+            el('span', { class: 'peringkat-event-akhir', text: 'berakhir ' + waktuWIB(ev.selesai) }),
+            s ? el('span', { class: 'peringkat-saya' }, ' · Anda ', el('strong', { text: '#' + s.peringkat })) : null)))
+      ]
+    });
+  }
+
+  let timerEventSelesai = 0;
   function renderPeringkat() {
     const w = $('#papan-peringkat');
+    const kini = Date.now();
+    // Event yang sudah lewat disembunyikan tanpa menunggu permintaan berikutnya.
+    Object.keys(peringkatData).forEach((id) => {
+      const ev = peringkatData[id].event;
+      if (ev && ev.selesai * 1000 <= kini) delete peringkatData[id].event;
+    });
     // Hanya aplikasi yang ada di paket portal (bukan tautan/Hub), menurut urutan aplikasi.
     const daftar = S.aplikasi.filter((a) => peringkatData[a.id] && !diTabBaru(a));
-    w.replaceChildren(...daftar.map((a) => kartuPeringkat(a, peringkatData[a.id])));
+    const kartu = [];
+    daftar.forEach((a) => {
+      const d = peringkatData[a.id];
+      kartu.push(kartuPeringkat(a, d));
+      if (d.event) kartu.push(kartuEvent(a, d.event));
+    });
+    w.replaceChildren(...kartu);
     w.hidden = !daftar.length;
+    // Jadwalkan render ulang tepat saat event terdekat selesai (dicek ulang paling lambat tiap 6 jam).
+    clearTimeout(timerEventSelesai);
+    const akhir = daftar.map((a) => peringkatData[a.id].event).filter(Boolean).map((e) => e.selesai * 1000);
+    if (akhir.length) {
+      const tunggu = Math.min(Math.max(1000, Math.min(...akhir) - kini + 500), 6 * 3600000);
+      timerEventSelesai = setTimeout(renderPeringkat, tunggu);
+    }
   }
 
   /* ===================== Tentang portal ===================== */

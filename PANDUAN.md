@@ -1,6 +1,6 @@
 # Portal Sahabat PPDS — Panduan singkat
 
-Portal ini mengikuti **KONTRAK_INTEGRASI.md versi 1.6** (bagian 5–11). Semua data (aplikasi, peran, pengumuman) diambil dari Hub, jadi file di sini jarang perlu diubah.
+Portal ini mengikuti **KONTRAK_INTEGRASI.md versi 1.7** (bagian 5–11). Semua data (aplikasi, peran, pengumuman) diambil dari Hub, jadi file di sini jarang perlu diubah.
 
 ## File
 | File | Isi |
@@ -50,6 +50,7 @@ Repo ini publik. **Jangan menaruh kunci, PIN, atau rahasia apa pun di file mana 
 - **Tentang portal:** tautan di bawah beranda dan menu Tentang di sidebar, termasuk keterangan "Data cuaca: BMKG".
 
 - **Peringkat:** kartu satu baris di beranda (mis. "🏆 Go Get It! · Peringkat Anda #12"). Ketuk untuk membuka 5 teratas, ketuk lagi untuk menutup. Ketuk nama aplikasi untuk membukanya. Diminta ke Hub setelah beranda tampil, paling sering tiap 5 menit. Bila Hub tidak memberi data, kartu disembunyikan.
+- **Papan event (kontrak 1.7):** selama ada event (mis. turnamen) di aplikasi itu, muncul kartu kecil berbingkai emas tepat di bawah kartu peringkatnya: nama event, "berakhir <hari, tanggal, jam> WIB", dan peringkat Anda di event. Ketuk untuk melihat 5 teratas event. Ketuk nama event untuk membuka aplikasinya. Kartu hilang sendiri begitu waktu event habis.
 
 ## Mengubah portal
 Edit file di GitHub (ikon pensil → Commit). Bila mengubah `index.html`, `style.css`, `app.js`, atau `config.js`, naikkan juga angka di `sw.js` (mis. `portal-v3` → `portal-v4`).

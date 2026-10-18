@@ -818,3 +818,18 @@ button.versi { border: 0; background: none; padding: 8px 4px; color: var(--redup
   background: var(--info-bg); color: var(--info); font-size: 13px; font-weight: 700; white-space: nowrap;
 }
 .peringkat-alih-ikon { flex: 0 0 44px; justify-content: center; padding: 0; }
+
+/* (1.7) Papan event — kartu kecil di bawah papan aplikasinya */
+.peringkat-event {
+  margin: -4px 0 0 14px; border-color: color-mix(in srgb, #D9A520 45%, var(--garis));
+  background: linear-gradient(90deg, color-mix(in srgb, #F2D27A 16%, var(--permukaan)), var(--permukaan) 70%);
+  box-shadow: inset 3px 0 0 #D9A520;
+}
+.peringkat-event .peringkat-baris { align-items: flex-start; padding-top: 6px; }
+.peringkat-event .peringkat-piala { padding-top: 9px; }
+.peringkat-event-isi { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.peringkat-event-nama { max-width: 100%; padding-bottom: 0; }
+.peringkat-event .peringkat-alih { min-height: 36px; padding-top: 0; }
+.peringkat-event-ket { min-width: 0; display: flex; flex-wrap: wrap; gap: 0 4px; font-size: 13px; line-height: 1.35; }
+.peringkat-event-akhir { white-space: nowrap; }
+.peringkat-event .peringkat-panel { padding-left: 14px; }
